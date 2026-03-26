@@ -452,8 +452,10 @@ export default function App() {
   };
 
   const [showUserNotifs, setShowUserNotifs] = useState(false);
+  // NAYA: Mobile menu ko control karne ke liye
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const renderContent = () => {
+ const renderContent = () => {
     if (authLoading) {
       return (
         <div className="flex items-center justify-center min-h-screen bg-[#050505]">
@@ -472,19 +474,36 @@ export default function App() {
 
     return (
       <div className="flex h-screen bg-[#050505] text-slate-300 font-sans relative overflow-hidden">
+        {/* Background Colors */}
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[150px] pointer-events-none"></div>
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-cyan-600/10 rounded-full blur-[150px] pointer-events-none"></div>
         
-        <aside className="w-64 bg-white/5 backdrop-blur-2xl border-r border-white/5 text-white flex flex-col z-10 shrink-0">
-          <div className="p-6 flex items-center justify-between">
+        {/* NAYA: Mobile Screen ke liye Kala Overlay (Pardaa) */}
+        {isMobileMenuOpen && (
+          <div 
+            className="fixed inset-0 bg-black/80 z-40 md:hidden backdrop-blur-sm transition-opacity"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+        )}
+
+        {/* UPDATED: Sidebar (Jo mobile par Slide hoke aayega) */}
+        <aside className={`fixed md:relative top-0 left-0 z-50 w-72 md:w-64 h-full bg-[#0a0c10] md:bg-white/5 backdrop-blur-2xl border-r border-white/5 text-white flex flex-col shrink-0 transition-transform duration-300 ease-out ${isMobileMenuOpen ? 'translate-x-0 shadow-[20px_0_50px_rgba(0,0,0,0.5)]' : '-translate-x-full'} md:translate-x-0`}>
+          <div className="p-6 flex items-center justify-between border-b border-white/5 md:border-none">
             <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setRoute('landing')}>
               <div className="p-2 bg-gradient-to-br from-indigo-500 to-cyan-500 rounded-xl shadow-[0_0_15px_rgba(99,102,241,0.4)]">
                 <Home className="h-6 w-6 text-white" />
               </div>
               <span className="text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">LeaderPro</span>
             </div>
+
+            {/* NAYA: Mobile me Menu Band karne ka Button */}
+            <button className="md:hidden text-slate-400 hover:text-white bg-white/5 p-2 rounded-lg" onClick={() => setIsMobileMenuOpen(false)}>
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Desktop Notification Bell */}
             {!isAdmin && profiles[0] && (
-              <div className="relative cursor-pointer" onClick={() => { setShowUserNotifs(true); markNotificationsRead(); }}>
+              <div className="relative cursor-pointer hidden md:block" onClick={() => { setShowUserNotifs(true); markNotificationsRead(); }}>
                 <Bell className="h-6 w-6 text-slate-300 hover:text-cyan-400 transition-colors" />
                 {Array.isArray(profiles[0].notifications) && profiles[0].notifications.filter(n => !n.read).length > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-3 w-3">
@@ -499,17 +518,17 @@ export default function App() {
           <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto custom-scrollbar">
             {isAdmin ? (
               <>
-                <NavItem icon={<Users />} label={t("Admin Panel (Loans)", "Admin Panel (Loans)")} active={activeTab === 'admin_dashboard'} onClick={() => setActiveTab('admin_dashboard')} />
-                <NavItem icon={<User />} label={t("User Profiles", "User Profiles")} active={activeTab === 'profiles'} onClick={() => setActiveTab('profiles')} />
-                <NavItem icon={<MessageCircle />} label={t("Live Chat", "Live Chat / सहायता")} active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
+                <NavItem icon={<Users />} label={t("Admin Panel (Loans)", "Admin Panel (Loans)")} active={activeTab === 'admin_dashboard'} onClick={() => { setActiveTab('admin_dashboard'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<User />} label={t("User Profiles", "User Profiles")} active={activeTab === 'profiles'} onClick={() => { setActiveTab('profiles'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<MessageCircle />} label={t("Live Chat", "Live Chat / सहायता")} active={activeTab === 'chat'} onClick={() => { setActiveTab('chat'); setIsMobileMenuOpen(false); }} />
               </>
             ) : (
               <>
-                <NavItem icon={<Grid />} label={t("Your Dashboard", "Aapka Dashboard")} active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
-                <NavItem icon={<User />} label={t("My Profile", "Mera Profile")} active={activeTab === 'my_profile'} onClick={() => setActiveTab('my_profile')} />
-                <NavItem icon={<Plus />} label={t("New Loan (LOS)", "Naya Loan (LOS)")} active={activeTab === 'apply'} onClick={() => setActiveTab('apply')} />
-                <NavItem icon={<CreditCard />} label={t("My Loans (LSM)", "Mere Loans (LSM)")} active={activeTab === 'loans'} onClick={() => setActiveTab('loans')} />
-                <NavItem icon={<Headset />} label={t("Live Chat Support", "Live Chat / सहायता")} active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
+                <NavItem icon={<Grid />} label={t("Your Dashboard", "Aapka Dashboard")} active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<User />} label={t("My Profile", "Mera Profile")} active={activeTab === 'my_profile'} onClick={() => { setActiveTab('my_profile'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<Plus />} label={t("New Loan (LOS)", "Naya Loan (LOS)")} active={activeTab === 'apply'} onClick={() => { setActiveTab('apply'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<CreditCard />} label={t("My Loans (LSM)", "Mere Loans (LSM)")} active={activeTab === 'loans'} onClick={() => { setActiveTab('loans'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<Headset />} label={t("Live Chat Support", "Live Chat / सहायता")} active={activeTab === 'chat'} onClick={() => { setActiveTab('chat'); setIsMobileMenuOpen(false); }} />
               </>
             )}
           </nav>
@@ -534,6 +553,35 @@ export default function App() {
         </aside>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 z-10 flex flex-col relative custom-scrollbar">
+          
+          {/* NAYA: Mobile Screen ke liye Header aur Hamburger Menu */}
+          <div className="md:hidden flex items-center justify-between mb-6 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-md shadow-lg shrink-0">
+             <div className="flex items-center space-x-3">
+               <div className="p-1.5 bg-gradient-to-br from-indigo-500 to-cyan-500 rounded-lg">
+                 <Home className="h-5 w-5 text-white" />
+               </div>
+               <span className="text-xl font-bold text-white tracking-tight">LeaderPro</span>
+             </div>
+             
+             <div className="flex items-center space-x-4">
+                {/* Mobile Notification Bell */}
+                {!isAdmin && profiles[0] && (
+                  <div className="relative cursor-pointer" onClick={() => { setShowUserNotifs(true); markNotificationsRead(); }}>
+                    <Bell className="h-6 w-6 text-slate-300" />
+                    {Array.isArray(profiles[0].notifications) && profiles[0].notifications.filter(n => !n.read).length > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border border-[#050505]"></span>
+                      </span>
+                    )}
+                  </div>
+                )}
+                <button onClick={() => setIsMobileMenuOpen(true)} className="text-cyan-400 bg-black/40 p-2 rounded-xl border border-white/10 shadow-sm">
+                  <Menu className="h-6 w-6" />
+                </button>
+             </div>
+          </div>
+
           <div className="max-w-6xl mx-auto w-full flex-1 flex flex-col relative">
             
             {/* DATABASE WARNINGS */}
