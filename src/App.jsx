@@ -318,39 +318,40 @@ export default function App() {
     } catch (err) { showAlert("Error", "Profile save nahi ho payi. Database setup check karein."); }
   };
 
-  const deleteProfile = async (profile) => {
-    showConfirm("User Ka Pura Account Delete Karein", "Kya aap is user ki profile, loans aur LOGIN ACCOUNT permanently delete karna chahte hain?", async () => {
+const deleteProfile = async (profile) => {
+    showConfirm("User Ka Pura Account Delete Karein", "WARNING: Kya aap is user ki profile, loans aur LOGIN ACCOUNT permanently delete karna chahte hain? Ye wapas nahi aa sakta.", async () => {
       try {
-        const rpcResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/delete_user_account`, {
+        showAlert("Info", "Data delete ho raha hai, kripya pratiksha karein...");
+
+        // NAYA LOGIC: RPC function ko call karna (Taaki Auth bhi delete ho jaye)
+        const response = await fetch(`${supabaseUrl}/rest/v1/rpc/delete_user_account`, {
           method: 'POST',
-          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          headers: { 
+            'apikey': supabaseKey, 
+            'Authorization': `Bearer ${session.access_token}`, 
+            'Content-Type': 'application/json' 
+          },
           body: JSON.stringify({ user_id_to_delete: profile.user_id })
         });
 
-        if (!rpcResponse.ok) {
+        if (!response.ok) {
+           const errData = await response.json();
+           console.error("RPC Error:", errData);
            setDbRpcRequired(true);
-           
-           await fetch(`${supabaseUrl}/rest/v1/loans?user_id=eq.${profile.user_id}`, {
-             method: 'DELETE',
-             headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' }
-           });
-           await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${profile.id}`, {
-             method: 'DELETE',
-             headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' }
-           });
-           
-           setProfiles(prev => prev.filter(p => p.id !== profile.id));
-           setLoans(prev => prev.filter(l => l.user_id !== profile.user_id));
-           
-           showAlert("Partial Success", "Data delete ho gaya, PAR login account delete karne ke liye Dashboard pe aayi nayi SQL Query run karna zaroori hai.");
+           showAlert("Error", "RPC Function call nahi ho paya. Kripya Supabase SQL editor mein naya function banayein.");
            return;
         }
 
+        // Agar RPC success ho jaye toh UI se hata dein
         setDbRpcRequired(false);
         setProfiles(prev => prev.filter(p => p.id !== profile.id));
         setLoans(prev => prev.filter(l => l.user_id !== profile.user_id));
-        showAlert("Success", "User ka login account, profile aur sabhi loans hamesha ke liye delete ho gaye hain! Ab wo login nahi kar payega.");
-      } catch (err) { showAlert("Error", "Account delete nahi ho paya."); }
+        showAlert("Success", "User ka account aur saara data hamesha ke liye delete ho gaya hai.");
+
+      } catch (err) { 
+        console.error("Delete fail:", err);
+        showAlert("Error", "Account delete nahi ho paya. Permissions check karein."); 
+      }
     });
   };
 

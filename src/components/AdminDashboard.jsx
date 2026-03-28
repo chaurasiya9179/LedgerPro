@@ -1,4 +1,5 @@
 import React, { useState, useContext } from 'react';
+
 import { 
   Search, Sparkles, File, FileText, Plus, DollarSign, Key, Copy, Users, Activity, 
   CreditCard, Check, BarChart,UserPlus, Clock, User, MessageSquare, Edit, Trash, 
@@ -48,7 +49,7 @@ export default function AdminDashboardView({ loans, profiles, onDelete, onUpdate
     loan.userName.toLowerCase().includes(searchTerm.toLowerCase()) || loan.user_id.toLowerCase().includes(searchTerm.toLowerCase()) || loan.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const exportToCSV = () => {
+ const exportToCSV = async () => {
     const headers = ['Loan ID', 'Date', 'User Name', 'User ID', 'Principal Amount', 'Interest Rate (%)', 'Tenure (Months)', 'Recovered Amount', 'Net Liability', 'Status'];
     const rows = filteredLoans.map(l => [
       l.id, new Date(Number(l.createdAt)).toLocaleDateString(), `"${l.userName}"`, l.user_id, l.amount, l.interestRate, l.tenure, l.recoveredAmount || 0,
@@ -56,10 +57,33 @@ export default function AdminDashboardView({ loans, profiles, onDelete, onUpdate
     ]);
     
     const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob); link.download = `LeaderPro_Loans_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
-    link.style.visibility = 'hidden'; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    
+    // Mobile App (Android/iOS) ke liye check
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+      try {
+        // Blob ko base64 ya direct URL mein convert karke system browser mein bhejna
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const blobUrl = URL.createObjectURL(blob);
+
+        await Browser.open({ 
+          url: blobUrl, 
+          windowName: '_system' // Ye Chrome ko force karega download handle karne ke liye
+        });
+      } catch (error) {
+        console.error("Export failed", error);
+        showAlert("Error", "Mobile par export fail ho gaya.");
+      }
+    } else {
+      // Normal Browser (Web) ke liye purana logic
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob); 
+      link.download = `LeaderPro_Loans_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
+      link.style.visibility = 'hidden'; 
+      document.body.appendChild(link); 
+      link.click(); 
+      document.body.removeChild(link);
+    }
   };
 
   const handleAIAnalysis = async () => {
@@ -93,6 +117,33 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
         setAiModal({ isOpen: true, loading: false, result: response, error: '' });
     } catch (e) {
         setAiModal({ isOpen: true, loading: false, result: '', error: t('AI Analysis failed. Try again.', 'AI Vishleshan fail ho gaya. Kripya dubara koshish karein.') });
+    }
+  };
+
+  const handleFullUserDelete = async (userId) => {
+    const isConfirmed = window.confirm("WARNING: Kya aap sach mein is user ka astitva (Account, Profile, Loans) delete karna chahte hain? Ye process wapas nahi ho sakti.");
+    
+    if (!isConfirmed) return;
+
+    try {
+      // User ko wait karne ka message
+      showAlert("Info", "User delete ho raha hai, kripya pratiksha karein...");
+
+      // Supabase RPC function ko call karna
+      const { error } = await supabase.rpc('delete_user_account', {
+        user_id_to_delete: userId
+      });
+
+      if (error) throw error;
+
+      showAlert("Success", "User aur uska saara hisaab hamesha ke liye delete ho gaya.");
+      
+      // Page ko refresh kar dein taaki list update ho jaye
+      window.location.reload(); 
+
+    } catch (err) {
+      console.error("Delete Error:", err);
+      showAlert("Error", "User delete nahi ho paya. Permissions check karein.");
     }
   };
 
@@ -791,16 +842,25 @@ export function LoanHistoryModal({ loan, onClose, userName }) {
 export function AIInsightsModal({ isOpen, onClose, loading, result, error, t }) {
   if (!isOpen) return null;
 
-  const handleDownload = () => {
+ const handleDownload = async () => {
     if (!result) return;
-    const blob = new Blob([result], { type: 'text/plain;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `AI_Financial_Report_${new Date().toISOString().slice(0, 10)}.txt`;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+      // Mobile ke liye
+      const blob = new Blob([result], { type: 'text/plain;charset=utf-8;' });
+      const blobUrl = URL.createObjectURL(blob);
+      await Browser.open({ url: blobUrl, windowName: '_system' });
+    } else {
+      // Web ke liye
+      const blob = new Blob([result], { type: 'text/plain;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `AI_Financial_Report_${new Date().toISOString().slice(0, 10)}.txt`;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   return (

@@ -244,13 +244,29 @@ export function MyLoansView({ loans, profile }) {
 
   if (loans.length === 0) return (<div className="text-center py-20"><h2 className="text-2xl font-bold text-white">Koi loan nahi hai</h2></div>);
 
-  // PDF DOWNLOAD CALL
-  const downloadLedger = (loan) => {
+ // PDF DOWNLOAD CALL (Line 235 ke aas-paas)
+  const downloadLedger = async (loan) => {
     try {
-      generateLoanPDF(loan, profile);
+      // 1. Pehle PDF generate karein (Ye aapke utils se aa raha hai)
+      const doc = generateLoanPDF(loan, profile);
+      
+      // 2. Mobile App Check
+      if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+        // PDF ko Data URI mein convert karein
+        const pdfDataUri = doc.output('datauristring');
+        
+        // System browser (Chrome) mein download ke liye bhejein
+        await Browser.open({ 
+          url: pdfDataUri, 
+          windowName: '_system' 
+        });
+      } else {
+        // Normal Laptop/Web browser ke liye
+        doc.save(`LeaderPro_Ledger_${loan.id.substring(0,8)}.pdf`);
+      }
     } catch (error) {
       console.error("PDF Error: ", error);
-      alert("PDF banane mein error aayi hai.");
+      alert("PDF banane ya download karne mein error aayi hai.");
     }
   };
 
