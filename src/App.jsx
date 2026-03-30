@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef,useContext } from 'react';
 import { supabaseUrl, supabaseKey, isValidUUID, calculateAccruedInterest, callGeminiAI } from './utils';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { 
-  Home, 
-  CreditCard, 
-  FileText, 
-  Grid, 
-  LogOut, 
-  PieChart, 
-  Plus, 
+import {
+  Home,
+  CreditCard,
+  FileText,
+  Grid,
+  LogOut,
+  PieChart,
+  Plus,
   Shield,
   AlertCircle,
   Check,
@@ -46,7 +46,8 @@ import {
   Bot,
   Sparkles,
   BarChart,
-  Headset
+  Headset,
+  Calculator
 } from 'lucide-react';
 
 import AuthScreen from './components/AuthScreen';
@@ -58,37 +59,37 @@ import { DashboardView, UserVisualAnalytics, OriginationView, MyLoansView, UserM
 console.log("LeaderPro System Version 11.2 (Main Page Scroll & Table Heights Fixed)");
 
 // --- Language Context (NAYA) ---
-export const LanguageContext = React.createContext({ lang: 'hi', setLang: () => {}, t: (en, hi) => hi });
+export const LanguageContext = React.createContext({ lang: 'hi', setLang: () => { }, t: (en, hi) => hi });
 
 // --- Main Application Component ---
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  
+
   const [lang, setLang] = useState(() => localStorage.getItem('leaderpro_lang') || 'hi');
   useEffect(() => { localStorage.setItem('leaderpro_lang', lang); }, [lang]);
   const t = (en, hi) => lang === 'en' ? en : hi;
 
   const [route, setRoute] = useState('landing');
   const [activeTab, setActiveTab] = useState('dashboard');
-  
+
   const [loans, setLoans] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [inquiries, setInquiries] = useState([]);
-  const [supportChats, setSupportChats] = useState([]); 
-  
+  const [supportChats, setSupportChats] = useState([]);
+
   const [dbSetupRequired, setDbSetupRequired] = useState(false);
   const [dbAlterRequired, setDbAlterRequired] = useState(false);
   const [dbRecoveredAlterRequired, setDbRecoveredAlterRequired] = useState(false);
-  const [dbProfileSetupRequired, setDbProfileSetupRequired] = useState(false); 
-  const [dbProfileAlterRequired, setDbProfileAlterRequired] = useState(false); 
-  const [dbDeletePolicyRequired, setDbDeletePolicyRequired] = useState(false); 
-  const [dbRpcRequired, setDbRpcRequired] = useState(false); 
+  const [dbProfileSetupRequired, setDbProfileSetupRequired] = useState(false);
+  const [dbProfileAlterRequired, setDbProfileAlterRequired] = useState(false);
+  const [dbDeletePolicyRequired, setDbDeletePolicyRequired] = useState(false);
+  const [dbRpcRequired, setDbRpcRequired] = useState(false);
   const [dbTransactionsAlterRequired, setDbTransactionsAlterRequired] = useState(false);
-  const [dbNotificationsAlterRequired, setDbNotificationsAlterRequired] = useState(false); 
-  const [dbInquiriesSetupRequired, setDbInquiriesSetupRequired] = useState(false); 
-  const [dbChatsSetupRequired, setDbChatsSetupRequired] = useState(false); 
-  
+  const [dbNotificationsAlterRequired, setDbNotificationsAlterRequired] = useState(false);
+  const [dbInquiriesSetupRequired, setDbInquiriesSetupRequired] = useState(false);
+  const [dbChatsSetupRequired, setDbChatsSetupRequired] = useState(false);
+
   const [modal, setModal] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: null });
   const showAlert = (title, message) => setModal({ isOpen: true, type: 'alert', title, message, onConfirm: null });
   const showConfirm = (title, message, onConfirm) => setModal({ isOpen: true, type: 'confirm', title, message, onConfirm });
@@ -98,16 +99,16 @@ export default function App() {
 
   const fetchData = async (currentSession) => {
     if (!currentSession) return;
-    
+
     try {
-      const loanQuery = isAdmin 
+      const loanQuery = isAdmin
         ? `${supabaseUrl}/rest/v1/loans?admin_id=eq.${currentSession.user.id}&order=createdAt.desc`
         : `${supabaseUrl}/rest/v1/loans?user_id=eq.${currentSession.user.id}&order=createdAt.desc`;
 
       const loanRes = await fetch(loanQuery, {
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${currentSession.access_token}`, 'Content-Type': 'application/json' }
       });
-        
+
       if (loanRes.status === 404) setDbSetupRequired(true);
       else if (loanRes.status === 400) setDbAlterRequired(true);
       else if (loanRes.ok) {
@@ -115,39 +116,39 @@ export default function App() {
         setLoans(data || []);
         setDbSetupRequired(false);
         setDbAlterRequired(false);
-        
-        if (data.length > 0) {
-           if (!('recoveredAmount' in data[0])) setDbRecoveredAlterRequired(true);
-           else setDbRecoveredAlterRequired(false);
 
-           if (!('transactions' in data[0])) setDbTransactionsAlterRequired(true);
-           else setDbTransactionsAlterRequired(false);
+        if (data.length > 0) {
+          if (!('recoveredAmount' in data[0])) setDbRecoveredAlterRequired(true);
+          else setDbRecoveredAlterRequired(false);
+
+          if (!('transactions' in data[0])) setDbTransactionsAlterRequired(true);
+          else setDbTransactionsAlterRequired(false);
         }
       }
     } catch (error) { console.error("Loan fetch error:", error); }
 
     try {
-      const profileQuery = isAdmin 
+      const profileQuery = isAdmin
         ? `${supabaseUrl}/rest/v1/profiles?admin_id=eq.${currentSession.user.id}&order=createdAt.desc`
         : `${supabaseUrl}/rest/v1/profiles?user_id=eq.${currentSession.user.id}&order=createdAt.desc`;
 
       const profileRes = await fetch(profileQuery, {
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${currentSession.access_token}`, 'Content-Type': 'application/json' }
       });
-        
+
       if (profileRes.status === 404) {
         setDbProfileSetupRequired(true);
       } else if (profileRes.ok) {
         const data = await profileRes.json();
         setProfiles(data || []);
         setDbProfileSetupRequired(false);
-        
-        if (data.length > 0) {
-           if (!('aadhar_no' in data[0])) setDbProfileAlterRequired(true);
-           else setDbProfileAlterRequired(false);
 
-           if (!('notifications' in data[0])) setDbNotificationsAlterRequired(true);
-           else setDbNotificationsAlterRequired(false);
+        if (data.length > 0) {
+          if (!('aadhar_no' in data[0])) setDbProfileAlterRequired(true);
+          else setDbProfileAlterRequired(false);
+
+          if (!('notifications' in data[0])) setDbNotificationsAlterRequired(true);
+          else setDbNotificationsAlterRequired(false);
         }
       }
     } catch (error) { console.error("Profile fetch error:", error); }
@@ -167,14 +168,14 @@ export default function App() {
     }
 
     try {
-      const chatQuery = isAdmin 
+      const chatQuery = isAdmin
         ? `${supabaseUrl}/rest/v1/support_chats?admin_id=eq.${currentSession.user.id}&order=createdAt.asc`
         : `${supabaseUrl}/rest/v1/support_chats?user_id=eq.${currentSession.user.id}&order=createdAt.asc`;
 
       const chatRes = await fetch(chatQuery, {
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${currentSession.access_token}`, 'Content-Type': 'application/json' }
       });
-      
+
       if (chatRes.status === 404) setDbChatsSetupRequired(true);
       else if (chatRes.ok) {
         const data = await chatRes.json();
@@ -189,14 +190,14 @@ export default function App() {
     if (session && activeTab === 'chat') {
       chatInterval = setInterval(async () => {
         try {
-          const chatQuery = isAdmin 
+          const chatQuery = isAdmin
             ? `${supabaseUrl}/rest/v1/support_chats?admin_id=eq.${session.user.id}&order=createdAt.asc`
             : `${supabaseUrl}/rest/v1/support_chats?user_id=eq.${session.user.id}&order=createdAt.asc`;
 
           const chatRes = await fetch(chatQuery, {
             headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }
           });
-          
+
           if (chatRes.ok) {
             const data = await chatRes.json();
             setSupportChats(data || []);
@@ -235,8 +236,8 @@ export default function App() {
           method: 'DELETE',
           headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }
         });
-      } catch (e) { 
-        console.error("Chat deletion failed on logout", e); 
+      } catch (e) {
+        console.error("Chat deletion failed on logout", e);
       }
     }
 
@@ -246,7 +247,7 @@ export default function App() {
     setProfiles([]);
     setSupportChats([]);
     setActiveTab('dashboard');
-    setRoute('landing'); 
+    setRoute('landing');
   };
 
   const deleteLoan = async (loanId) => {
@@ -257,12 +258,12 @@ export default function App() {
           headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' }
         });
         if (!response.ok) throw new Error("Delete fail");
-        
+
         const data = await response.json();
         if (data.length === 0) {
-           setDbDeletePolicyRequired(true);
-           showAlert("Security Error", "Supabase Delete Policy (RLS) missing hai. Koi data delete nahi hua. Kripya upar di gayi SQL Query run karein.");
-           return;
+          setDbDeletePolicyRequired(true);
+          showAlert("Security Error", "Supabase Delete Policy (RLS) missing hai. Koi data delete nahi hua. Kripya upar di gayi SQL Query run karein.");
+          return;
         }
 
         setLoans(prev => prev.filter(l => l.id !== loanId));
@@ -301,10 +302,10 @@ export default function App() {
   const saveProfile = async (profileData, isEdit = false) => {
     try {
       const method = isEdit ? 'PATCH' : 'POST';
-      const url = isEdit 
-        ? `${supabaseUrl}/rest/v1/profiles?id=eq.${profileData.id}` 
+      const url = isEdit
+        ? `${supabaseUrl}/rest/v1/profiles?id=eq.${profileData.id}`
         : `${supabaseUrl}/rest/v1/profiles`;
-      
+
       const response = await fetch(url, {
         method: method,
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
@@ -312,13 +313,13 @@ export default function App() {
       });
 
       if (!response.ok) throw new Error("Profile save failed");
-      
+
       showAlert("Success", isEdit ? "Profile Update ho gayi!" : "Nayi Profile Ban Gayi! Admin ko ab ye dikhai degi.");
-      fetchData(session); 
+      fetchData(session);
     } catch (err) { showAlert("Error", "Profile save nahi ho payi. Database setup check karein."); }
   };
 
-const deleteProfile = async (profile) => {
+  const deleteProfile = async (profile) => {
     showConfirm("User Ka Pura Account Delete Karein", "WARNING: Kya aap is user ki profile, loans aur LOGIN ACCOUNT permanently delete karna chahte hain? Ye wapas nahi aa sakta.", async () => {
       try {
         showAlert("Info", "Data delete ho raha hai, kripya pratiksha karein...");
@@ -326,20 +327,20 @@ const deleteProfile = async (profile) => {
         // NAYA LOGIC: RPC function ko call karna (Taaki Auth bhi delete ho jaye)
         const response = await fetch(`${supabaseUrl}/rest/v1/rpc/delete_user_account`, {
           method: 'POST',
-          headers: { 
-            'apikey': supabaseKey, 
-            'Authorization': `Bearer ${session.access_token}`, 
-            'Content-Type': 'application/json' 
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({ user_id_to_delete: profile.user_id })
         });
 
         if (!response.ok) {
-           const errData = await response.json();
-           console.error("RPC Error:", errData);
-           setDbRpcRequired(true);
-           showAlert("Error", "RPC Function call nahi ho paya. Kripya Supabase SQL editor mein naya function banayein.");
-           return;
+          const errData = await response.json();
+          console.error("RPC Error:", errData);
+          setDbRpcRequired(true);
+          showAlert("Error", "RPC Function call nahi ho paya. Kripya Supabase SQL editor mein naya function banayein.");
+          return;
         }
 
         // Agar RPC success ho jaye toh UI se hata dein
@@ -348,9 +349,9 @@ const deleteProfile = async (profile) => {
         setLoans(prev => prev.filter(l => l.user_id !== profile.user_id));
         showAlert("Success", "User ka account aur saara data hamesha ke liye delete ho gaya hai.");
 
-      } catch (err) { 
+      } catch (err) {
         console.error("Delete fail:", err);
-        showAlert("Error", "Account delete nahi ho paya. Permissions check karein."); 
+        showAlert("Error", "Account delete nahi ho paya. Permissions check karein.");
       }
     });
   };
@@ -370,7 +371,7 @@ const deleteProfile = async (profile) => {
       });
 
       if (!response.ok) throw new Error("Message send failed");
-      
+
       setProfiles(prev => prev.map(p => p.user_id === userId ? { ...p, notifications: updatedNotifs } : p));
       showAlert("Success", "Notification user ko bhej diya gaya hai!");
     } catch (err) {
@@ -381,7 +382,7 @@ const deleteProfile = async (profile) => {
   const markNotificationsRead = async () => {
     if (!profiles[0]) return;
     const currentNotifs = Array.isArray(profiles[0].notifications) ? profiles[0].notifications : [];
-    if (currentNotifs.every(n => n.read)) return; 
+    if (currentNotifs.every(n => n.read)) return;
 
     const updatedNotifs = currentNotifs.map(n => ({ ...n, read: true }));
     try {
@@ -411,7 +412,7 @@ const deleteProfile = async (profile) => {
         body: JSON.stringify({ status: newStatus })
       });
       setInquiries(prev => prev.map(inq => inq.id === id ? { ...inq, status: newStatus } : inq));
-    } catch(e) { showAlert("Error", "Status update failed."); }
+    } catch (e) { showAlert("Error", "Status update failed."); }
   };
 
   const deleteInquiry = async (id) => {
@@ -423,14 +424,14 @@ const deleteProfile = async (profile) => {
         });
         setInquiries(prev => prev.filter(inq => inq.id !== id));
         showAlert("Success", "Message delete ho gaya.");
-      } catch(e) { showAlert("Error", "Delete failed."); }
+      } catch (e) { showAlert("Error", "Delete failed."); }
     });
   };
 
   const handleSendLiveChat = async (userId, adminId, senderRole, text) => {
     const newChat = { user_id: userId, admin_id: adminId, sender_role: senderRole, message: text, createdAt: Date.now() };
     const tempId = Math.random().toString();
-    
+
     setSupportChats(prev => [...prev, { ...newChat, id: tempId }]);
 
     try {
@@ -440,15 +441,15 @@ const deleteProfile = async (profile) => {
         body: JSON.stringify(newChat)
       });
       if (!response.ok) throw new Error("Chat fail");
-      
+
       const savedData = await response.json();
       if (savedData && savedData.length > 0) {
-         setSupportChats(prev => prev.map(c => c.id === tempId ? savedData[0] : c));
+        setSupportChats(prev => prev.map(c => c.id === tempId ? savedData[0] : c));
       }
     } catch (e) {
-       console.error(e);
-       setSupportChats(prev => prev.filter(c => c.id !== tempId));
-       showAlert("Error", t("Failed to send message. Table might be missing.", "Message send fail ho gaya. Database table check karein."));
+      console.error(e);
+      setSupportChats(prev => prev.filter(c => c.id !== tempId));
+      showAlert("Error", t("Failed to send message. Table might be missing.", "Message send fail ho gaya. Database table check karein."));
     }
   };
 
@@ -456,7 +457,7 @@ const deleteProfile = async (profile) => {
   // NAYA: Mobile menu ko control karne ke liye
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
- const renderContent = () => {
+  const renderContent = () => {
     if (authLoading) {
       return (
         <div className="flex items-center justify-center min-h-screen bg-[#050505]">
@@ -478,10 +479,10 @@ const deleteProfile = async (profile) => {
         {/* Background Colors */}
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[150px] pointer-events-none"></div>
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-cyan-600/10 rounded-full blur-[150px] pointer-events-none"></div>
-        
+
         {/* NAYA: Mobile Screen ke liye Kala Overlay (Pardaa) */}
         {isMobileMenuOpen && (
-          <div 
+          <div
             className="fixed inset-0 bg-black/80 z-40 md:hidden backdrop-blur-sm transition-opacity"
             onClick={() => setIsMobileMenuOpen(false)}
           />
@@ -554,37 +555,37 @@ const deleteProfile = async (profile) => {
         </aside>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 z-10 flex flex-col relative custom-scrollbar">
-          
+
           {/* NAYA: Mobile Screen ke liye Header aur Hamburger Menu */}
           <div className="md:hidden flex items-center justify-between mb-6 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-md shadow-lg shrink-0">
-             <div className="flex items-center space-x-3">
-               <div className="p-1.5 bg-gradient-to-br from-indigo-500 to-cyan-500 rounded-lg">
-                 <Home className="h-5 w-5 text-white" />
-               </div>
-               <span className="text-xl font-bold text-white tracking-tight">LeaderPro</span>
-             </div>
-             
-             <div className="flex items-center space-x-4">
-                {/* Mobile Notification Bell */}
-                {!isAdmin && profiles[0] && (
-                  <div className="relative cursor-pointer" onClick={() => { setShowUserNotifs(true); markNotificationsRead(); }}>
-                    <Bell className="h-6 w-6 text-slate-300" />
-                    {Array.isArray(profiles[0].notifications) && profiles[0].notifications.filter(n => !n.read).length > 0 && (
-                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border border-[#050505]"></span>
-                      </span>
-                    )}
-                  </div>
-                )}
-                <button onClick={() => setIsMobileMenuOpen(true)} className="text-cyan-400 bg-black/40 p-2 rounded-xl border border-white/10 shadow-sm">
-                  <Menu className="h-6 w-6" />
-                </button>
-             </div>
+            <div className="flex items-center space-x-3">
+              <div className="p-1.5 bg-gradient-to-br from-indigo-500 to-cyan-500 rounded-lg">
+                <Home className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-xl font-bold text-white tracking-tight">LeaderPro</span>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              {/* Mobile Notification Bell */}
+              {!isAdmin && profiles[0] && (
+                <div className="relative cursor-pointer" onClick={() => { setShowUserNotifs(true); markNotificationsRead(); }}>
+                  <Bell className="h-6 w-6 text-slate-300" />
+                  {Array.isArray(profiles[0].notifications) && profiles[0].notifications.filter(n => !n.read).length > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border border-[#050505]"></span>
+                    </span>
+                  )}
+                </div>
+              )}
+              <button onClick={() => setIsMobileMenuOpen(true)} className="text-cyan-400 bg-black/40 p-2 rounded-xl border border-white/10 shadow-sm">
+                <Menu className="h-6 w-6" />
+              </button>
+            </div>
           </div>
 
           <div className="max-w-6xl mx-auto w-full flex-1 flex flex-col relative">
-            
+
             {/* DATABASE WARNINGS */}
             {dbSetupRequired && <DbWarning title="Loans Table Missing" query={`CREATE TABLE loans (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, user_id uuid, admin_id uuid, amount numeric, "recoveredAmount" numeric DEFAULT 0, tenure numeric, "interestRate" numeric, emi numeric, status text, type text, "createdAt" int8, "adminNote" text);`} />}
             {dbAlterRequired && <DbWarning title="Loans Table Update Required" query={`ALTER TABLE loans ADD COLUMN admin_id uuid;`} isAlter />}
@@ -603,20 +604,22 @@ const deleteProfile = async (profile) => {
             {activeTab === 'profiles' && isAdmin && <AdminProfilesView profiles={profiles} loans={loans} adminId={session.user.id} onSave={saveProfile} onDelete={deleteProfile} onSendMessage={sendUserNotification} showAlert={showAlert} />}
             {activeTab === 'inquiries' && isAdmin && <AdminInquiriesView inquiries={inquiries} onUpdateStatus={updateInquiryStatus} onDelete={deleteInquiry} t={t} />}
             {activeTab === 'chat' && isAdmin && <AdminLiveChatView profiles={profiles} chats={supportChats} onSend={handleSendLiveChat} adminId={session.user.id} onClose={() => setActiveTab('admin_dashboard')} t={t} />}
-            
+
             {/* USER TABS */}
-            {activeTab === 'dashboard' && !isAdmin && <DashboardView loans={loans.filter(l => l.user_id === session.user.id)} onNavigate={setActiveTab} />}
+            {activeTab === 'dashboard' && !isAdmin && <DashboardView loans={loans.filter(l => l.user_id === session.user.id)} profile={profiles[0]} onNavigate={setActiveTab} session={session} showAlert={showAlert} onSuccess={() => fetchData(session)} />}
             {activeTab === 'my_profile' && !isAdmin && <UserMyProfileView profile={profiles[0]} loans={loans.filter(l => l.user_id === session.user.id)} session={session} onSave={saveProfile} showAlert={showAlert} />}
             {activeTab === 'apply' && !isAdmin && <OriginationView session={session} onNavigate={setActiveTab} onSuccess={() => fetchData(session)} isAdmin={isAdmin} showAlert={showAlert} />}
             {activeTab === 'loans' && !isAdmin && <MyLoansView loans={loans.filter(l => l.user_id === session.user.id)} profile={profiles[0]} />}
             {activeTab === 'chat' && !isAdmin && <UserLiveChatView session={session} profile={profiles[0]} chats={supportChats.filter(c => c.user_id === session.user.id)} onSend={handleSendLiveChat} onClose={() => setActiveTab('dashboard')} t={t} />}
           </div>
         </main>
+        {/* NAYA: FLOATING CALCULATOR LAGA DIYA HAI */}
+        {session && <FloatingCalculator t={t} />}
       </div>
     );
   };
 
- return (
+  return (
     <LanguageContext.Provider value={{ lang, setLang, t }}>
       <div style={{ scrollBehavior: 'smooth' }}>
         <style>{`
@@ -625,55 +628,55 @@ const deleteProfile = async (profile) => {
           .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
           .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(34, 211, 238, 0.5); }
         `}</style>
-        
+
         {renderContent()}
-        
+
         {/* NAYA: AI CHATBOT WIDGET YAHAN LAGA HAI */}
         {session && route === 'app' && (
-           <AIChatbotWidget 
-             session={session} 
-             loans={loans} 
-             profiles={profiles} 
-             isAdmin={isAdmin} 
-             t={t} 
-             lang={lang} 
-           />
+          <AIChatbotWidget
+            session={session}
+            loans={loans}
+            profiles={profiles}
+            isAdmin={isAdmin}
+            t={t}
+            lang={lang}
+          />
         )}
-        
+
         {/* User Notifications Modal */}
         {!isAdmin && showUserNotifs && profiles[0] && (
-          <UserNotificationsModal 
-             notifications={profiles[0].notifications} 
-             onClose={() => setShowUserNotifs(false)} 
+          <UserNotificationsModal
+            notifications={profiles[0].notifications}
+            onClose={() => setShowUserNotifs(false)}
           />
         )}
 
         {/* Global Modals (Alert/Confirm) */}
         {modal.isOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-             <div className="bg-[#111318] border border-white/10 p-6 rounded-3xl shadow-2xl max-w-sm w-full">
-                <div className="flex items-center space-x-3 mb-4">
-                   {modal.type === 'confirm' ? <AlertCircle className="h-6 w-6 text-amber-500" /> : <Shield className="h-6 w-6 text-cyan-500" />}
-                   <h3 className="text-xl font-bold text-white">{modal.title}</h3>
-                </div>
-                <p className="text-slate-400 mb-8 text-sm leading-relaxed whitespace-pre-wrap">{modal.message}</p>
-                <div className="flex justify-end gap-3">
-                   {modal.type === 'confirm' && (
-                     <button onClick={closeModal} className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl text-sm font-semibold transition-colors">
-                       {t("No, Cancel", "Nahi, Cancel")}
-                     </button>
-                   )}
-                   <button 
-                     onClick={() => {
-                       if (modal.type === 'confirm' && modal.onConfirm) modal.onConfirm();
-                       closeModal();
-                     }} 
-                     className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-lg ${modal.type === 'confirm' ? 'bg-red-500 hover:bg-red-400 text-black shadow-red-500/20' : 'bg-cyan-500 hover:bg-cyan-400 text-black shadow-cyan-500/20'}`}
-                   >
-                     {modal.type === 'confirm' ? t("Yes, Confirm", "Haan, Pakka") : t("Okay", "Theek Hai (OK)")}
-                   </button>
-                </div>
-             </div>
+            <div className="bg-[#111318] border border-white/10 p-6 rounded-3xl shadow-2xl max-w-sm w-full">
+              <div className="flex items-center space-x-3 mb-4">
+                {modal.type === 'confirm' ? <AlertCircle className="h-6 w-6 text-amber-500" /> : <Shield className="h-6 w-6 text-cyan-500" />}
+                <h3 className="text-xl font-bold text-white">{modal.title}</h3>
+              </div>
+              <p className="text-slate-400 mb-8 text-sm leading-relaxed whitespace-pre-wrap">{modal.message}</p>
+              <div className="flex justify-end gap-3">
+                {modal.type === 'confirm' && (
+                  <button onClick={closeModal} className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl text-sm font-semibold transition-colors">
+                    {t("No, Cancel", "Nahi, Cancel")}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (modal.type === 'confirm' && modal.onConfirm) modal.onConfirm();
+                    closeModal();
+                  }}
+                  className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-lg ${modal.type === 'confirm' ? 'bg-red-500 hover:bg-red-400 text-black shadow-red-500/20' : 'bg-cyan-500 hover:bg-cyan-400 text-black shadow-cyan-500/20'}`}
+                >
+                  {modal.type === 'confirm' ? t("Yes, Confirm", "Haan, Pakka") : t("Okay", "Theek Hai (OK)")}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -701,15 +704,86 @@ function NavItem({ icon, label, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-300 ${
-        active 
-          ? 'bg-gradient-to-r from-indigo-500/20 to-cyan-500/10 border-l-2 border-cyan-400 text-white shadow-[inset_0_0_20px_rgba(6,182,212,0.1)]' 
-          : 'text-slate-400 hover:bg-white/5 hover:text-slate-200 border-l-2 border-transparent'
-      }`}
+      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-300 ${active
+        ? 'bg-gradient-to-r from-indigo-500/20 to-cyan-500/10 border-l-2 border-cyan-400 text-white shadow-[inset_0_0_20px_rgba(6,182,212,0.1)]'
+        : 'text-slate-400 hover:bg-white/5 hover:text-slate-200 border-l-2 border-transparent'
+        }`}
     >
       {React.cloneElement(icon, { className: `h-5 w-5 ${active ? 'text-cyan-400' : ''}` })}
       <span className="font-medium tracking-wide">{label}</span>
     </button>
+  );
+}
+
+// ----------------------------------------------------------------------
+// NAYA: FLOATING EMI CALCULATOR WIDGET
+// ----------------------------------------------------------------------
+function FloatingCalculator({ t }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [principal, setPrincipal] = useState(100000);
+  const [rate, setRate] = useState(24);
+  const [months, setMonths] = useState(12);
+
+  const calculate = () => {
+    const p = Number(principal);
+    const r = Number(rate) / 12 / 100;
+    const n = Number(months);
+    if (!p || !r || !n) return { emi: 0, totalInterest: 0, totalAmount: 0 };
+    
+    // EMI Formula
+    const emi = (p * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    const totalAmount = emi * n;
+    const totalInterest = totalAmount - p;
+    
+    return { emi: Math.round(emi), totalInterest: Math.round(totalInterest), totalAmount: Math.round(totalAmount) };
+  };
+
+  const results = calculate();
+
+  return (
+    <div className="fixed bottom-6 right-6 z-[200] flex flex-col items-end">
+      {isOpen && (
+        <div className="bg-[#111318]/95 backdrop-blur-2xl border border-cyan-500/30 shadow-[0_0_40px_rgba(34,211,238,0.2)] rounded-3xl p-6 mb-4 w-[320px] animate-in slide-in-from-bottom-6 duration-300">
+          <div className="flex justify-between items-center mb-5 border-b border-white/10 pb-4">
+            <h3 className="text-white font-bold flex items-center text-lg">
+              <Calculator className="w-5 h-5 mr-2 text-cyan-400"/> 
+              {t("EMI Calculator", "EMI Calculator")}
+            </h3>
+            <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white bg-white/5 p-1.5 rounded-full transition-colors"><X className="w-4 h-4"/></button>
+          </div>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1 block">Principal Rashi (₹)</label>
+              <input type="number" value={principal} onChange={(e) => setPrincipal(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white text-sm focus:ring-1 focus:ring-cyan-500 outline-none" />
+            </div>
+            <div className="flex gap-3">
+               <div className="flex-1">
+                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1 block">Byaj Dar (%)</label>
+                  <input type="number" step="0.1" value={rate} onChange={(e) => setRate(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white text-sm focus:ring-1 focus:ring-cyan-500 outline-none" />
+               </div>
+               <div className="flex-1">
+                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1 block">Samay (Mahine)</label>
+                  <input type="number" value={months} onChange={(e) => setMonths(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white text-sm focus:ring-1 focus:ring-cyan-500 outline-none" />
+               </div>
+            </div>
+            
+            <div className="bg-gradient-to-br from-cyan-950/30 to-indigo-950/30 border border-cyan-500/20 p-4 rounded-xl mt-4 space-y-3">
+               <div className="flex justify-between text-sm items-center"><span className="text-slate-400 text-xs uppercase tracking-wider">Mahine ki EMI:</span> <span className="text-cyan-400 font-bold text-base">₹{results.emi.toLocaleString('en-IN')}</span></div>
+               <div className="flex justify-between text-sm items-center"><span className="text-slate-400 text-xs uppercase tracking-wider">Kul Byaj:</span> <span className="text-amber-400 font-bold">₹{results.totalInterest.toLocaleString('en-IN')}</span></div>
+               <div className="flex justify-between text-sm items-center border-t border-white/10 pt-3"><span className="text-white font-bold text-xs uppercase tracking-wider">Kul Wapsi:</span> <span className="text-white font-black text-lg">₹{results.totalAmount.toLocaleString('en-IN')}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <button 
+        onClick={() => setIsOpen(!isOpen)} 
+        className={`p-4 rounded-full shadow-[0_0_20px_rgba(34,211,238,0.4)] transition-all duration-300 flex items-center justify-center border border-white/10 ${isOpen ? 'bg-slate-800 text-white rotate-90 scale-90' : 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white hover:scale-110'}`}
+      >
+         {isOpen ? <X className="w-6 h-6" /> : <Calculator className="w-6 h-6" />}
+      </button>
+    </div>
   );
 }
 
@@ -720,7 +794,7 @@ function NavItem({ icon, label, active, onClick }) {
 function AdminLiveChatView({ profiles, chats, onSend, adminId, onClose, t }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [msgInput, setMsgInput] = useState('');
-  
+
   const chatContainerRef = useRef(null);
 
   const activeProfile = profiles.find(p => p.user_id === selectedUser);
@@ -755,95 +829,95 @@ function AdminLiveChatView({ profiles, chats, onSend, adminId, onClose, t }) {
       </header>
 
       <div className="flex flex-col md:flex-row flex-1 bg-[#111318] rounded-3xl border border-white/[0.04] shadow-xl overflow-hidden min-h-0">
-         <div className={`w-full md:w-1/3 lg:w-1/4 border-r border-white/10 flex flex-col ${selectedUser ? 'hidden md:flex' : 'flex'}`}>
-            <div className="p-4 border-b border-white/10 shrink-0">
-               <h3 className="text-sm font-bold text-white uppercase tracking-widest">{t("Your Users", "Aapke Users")}</h3>
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-               {profiles.length === 0 ? (
-                 <p className="text-center text-slate-500 text-sm mt-10">No users found.</p>
-               ) : (
-                 profiles.map(p => {
-                    const userMsgs = chats.filter(c => c.user_id === p.user_id);
-                    const lastMsg = userMsgs[userMsgs.length - 1];
-                    const isUnread = lastMsg && lastMsg.sender_role === 'user'; 
-
-                    return (
-                      <button 
-                        key={p.id} 
-                        onClick={() => setSelectedUser(p.user_id)}
-                        className={`w-full text-left flex items-center p-3 rounded-xl transition-colors ${selectedUser === p.user_id ? 'bg-cyan-500/10 border border-cyan-500/20' : 'hover:bg-white/5 border border-transparent'}`}
-                      >
-                         <div className="relative shrink-0">
-                            <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center border border-white/10">
-                               <User className="h-5 w-5 text-slate-400" />
-                            </div>
-                            {isUnread && <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-[#111318]"></span>}
-                         </div>
-                         <div className="ml-3 flex-1 overflow-hidden">
-                            <p className="text-sm font-bold text-white truncate">{p.full_name || 'Unknown'}</p>
-                            <p className="text-xs text-slate-500 truncate">{lastMsg ? lastMsg.message : 'No messages yet'}</p>
-                         </div>
-                      </button>
-                    );
-                 })
-               )}
-            </div>
-         </div>
-
-         <div className={`w-full flex-col flex-1 bg-black/20 ${!selectedUser ? 'hidden md:flex' : 'flex'}`}>
-            {!selectedUser ? (
-               <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
-                  <MessageCircle className="h-16 w-16 mb-4 opacity-20" />
-                  <p>{t("Select a user to start chatting.", "Chat shuru karne ke liye user chunein.")}</p>
-               </div>
+        <div className={`w-full md:w-1/3 lg:w-1/4 border-r border-white/10 flex flex-col ${selectedUser ? 'hidden md:flex' : 'flex'}`}>
+          <div className="p-4 border-b border-white/10 shrink-0">
+            <h3 className="text-sm font-bold text-white uppercase tracking-widest">{t("Your Users", "Aapke Users")}</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+            {profiles.length === 0 ? (
+              <p className="text-center text-slate-500 text-sm mt-10">No users found.</p>
             ) : (
-               <>
-                 <div className="p-4 border-b border-white/10 bg-[#111318] flex items-center space-x-3 shrink-0">
-                    <button className="md:hidden p-2 text-slate-400 hover:text-white" onClick={() => setSelectedUser(null)}><ChevronRight className="h-6 w-6 rotate-180" /></button>
-                    <div className="w-10 h-10 rounded-full bg-cyan-900/50 flex items-center justify-center border border-cyan-500/30 shrink-0">
-                       <User className="h-5 w-5 text-cyan-400" />
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                       <h3 className="font-bold text-white truncate">{activeProfile?.full_name || 'Unknown User'}</h3>
-                       <p className="text-[10px] font-mono text-slate-500 truncate">{selectedUser}</p>
-                    </div>
-                 </div>
+              profiles.map(p => {
+                const userMsgs = chats.filter(c => c.user_id === p.user_id);
+                const lastMsg = userMsgs[userMsgs.length - 1];
+                const isUnread = lastMsg && lastMsg.sender_role === 'user';
 
-                 <div ref={chatContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 min-h-0 scroll-smooth">
-                    {activeChats.length === 0 ? (
-                       <div className="text-center text-slate-500 text-sm mt-10">{t("No messages yet. Send a greeting!", "Abhi tak koi message nahi hai.")}</div>
-                    ) : (
-                       activeChats.map(c => (
-                         <div key={c.id} className={`flex ${c.sender_role === 'admin' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[75%] p-3 rounded-2xl ${c.sender_role === 'admin' ? 'bg-cyan-600 text-white rounded-br-sm shadow-md' : 'bg-slate-800 text-slate-200 rounded-bl-sm border border-white/5'}`}>
-                               <p className="text-sm leading-relaxed">{c.message}</p>
-                               <p className={`text-[9px] mt-1 text-right ${c.sender_role === 'admin' ? 'text-cyan-200/70' : 'text-slate-500'}`}>
-                                 {new Date(Number(c.createdAt)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                               </p>
-                            </div>
-                         </div>
-                       ))
-                    )}
-                 </div>
-
-                 <div className="p-4 bg-[#111318] border-t border-white/10 shrink-0">
-                    <form onSubmit={handleSend} className="flex items-center space-x-3">
-                       <input 
-                         type="text" 
-                         value={msgInput}
-                         onChange={(e) => setMsgInput(e.target.value)}
-                         placeholder={t("Type your message here...", "Apna message yahan likhein...")}
-                         className="flex-1 bg-black/40 border border-white/10 rounded-full px-5 py-3 text-sm text-white focus:ring-1 focus:ring-cyan-500 outline-none"
-                       />
-                       <button type="submit" disabled={!msgInput.trim()} className="w-12 h-12 rounded-full bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
-                          <Send className="h-5 w-5 ml-1" />
-                       </button>
-                    </form>
-                 </div>
-               </>
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setSelectedUser(p.user_id)}
+                    className={`w-full text-left flex items-center p-3 rounded-xl transition-colors ${selectedUser === p.user_id ? 'bg-cyan-500/10 border border-cyan-500/20' : 'hover:bg-white/5 border border-transparent'}`}
+                  >
+                    <div className="relative shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center border border-white/10">
+                        <User className="h-5 w-5 text-slate-400" />
+                      </div>
+                      {isUnread && <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-[#111318]"></span>}
+                    </div>
+                    <div className="ml-3 flex-1 overflow-hidden">
+                      <p className="text-sm font-bold text-white truncate">{p.full_name || 'Unknown'}</p>
+                      <p className="text-xs text-slate-500 truncate">{lastMsg ? lastMsg.message : 'No messages yet'}</p>
+                    </div>
+                  </button>
+                );
+              })
             )}
-         </div>
+          </div>
+        </div>
+
+        <div className={`w-full flex-col flex-1 bg-black/20 ${!selectedUser ? 'hidden md:flex' : 'flex'}`}>
+          {!selectedUser ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
+              <MessageCircle className="h-16 w-16 mb-4 opacity-20" />
+              <p>{t("Select a user to start chatting.", "Chat shuru karne ke liye user chunein.")}</p>
+            </div>
+          ) : (
+            <>
+              <div className="p-4 border-b border-white/10 bg-[#111318] flex items-center space-x-3 shrink-0">
+                <button className="md:hidden p-2 text-slate-400 hover:text-white" onClick={() => setSelectedUser(null)}><ChevronRight className="h-6 w-6 rotate-180" /></button>
+                <div className="w-10 h-10 rounded-full bg-cyan-900/50 flex items-center justify-center border border-cyan-500/30 shrink-0">
+                  <User className="h-5 w-5 text-cyan-400" />
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <h3 className="font-bold text-white truncate">{activeProfile?.full_name || 'Unknown User'}</h3>
+                  <p className="text-[10px] font-mono text-slate-500 truncate">{selectedUser}</p>
+                </div>
+              </div>
+
+              <div ref={chatContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 min-h-0 scroll-smooth">
+                {activeChats.length === 0 ? (
+                  <div className="text-center text-slate-500 text-sm mt-10">{t("No messages yet. Send a greeting!", "Abhi tak koi message nahi hai.")}</div>
+                ) : (
+                  activeChats.map(c => (
+                    <div key={c.id} className={`flex ${c.sender_role === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[75%] p-3 rounded-2xl ${c.sender_role === 'admin' ? 'bg-cyan-600 text-white rounded-br-sm shadow-md' : 'bg-slate-800 text-slate-200 rounded-bl-sm border border-white/5'}`}>
+                        <p className="text-sm leading-relaxed">{c.message}</p>
+                        <p className={`text-[9px] mt-1 text-right ${c.sender_role === 'admin' ? 'text-cyan-200/70' : 'text-slate-500'}`}>
+                          {new Date(Number(c.createdAt)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="p-4 bg-[#111318] border-t border-white/10 shrink-0">
+                <form onSubmit={handleSend} className="flex items-center space-x-3">
+                  <input
+                    type="text"
+                    value={msgInput}
+                    onChange={(e) => setMsgInput(e.target.value)}
+                    placeholder={t("Type your message here...", "Apna message yahan likhein...")}
+                    className="flex-1 bg-black/40 border border-white/10 rounded-full px-5 py-3 text-sm text-white focus:ring-1 focus:ring-cyan-500 outline-none"
+                  />
+                  <button type="submit" disabled={!msgInput.trim()} className="w-12 h-12 rounded-full bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+                    <Send className="h-5 w-5 ml-1" />
+                  </button>
+                </form>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -851,7 +925,7 @@ function AdminLiveChatView({ profiles, chats, onSend, adminId, onClose, t }) {
 
 function UserLiveChatView({ session, profile, chats, onSend, onClose, t }) {
   const [msgInput, setMsgInput] = useState('');
-  
+
   const chatContainerRef = useRef(null);
 
   useEffect(() => {
@@ -884,79 +958,76 @@ function UserLiveChatView({ session, profile, chats, onSend, onClose, t }) {
       </header>
 
       <div className="flex-1 bg-[#111318] rounded-3xl border border-white/[0.04] shadow-xl overflow-hidden flex flex-col min-h-0 max-w-3xl">
-         <div className="p-4 border-b border-white/10 bg-black/20 flex items-center space-x-3 shrink-0">
-            <div className="w-10 h-10 rounded-full bg-indigo-900/50 flex items-center justify-center border border-indigo-500/30">
-               <Headset className="h-5 w-5 text-indigo-400" />
-            </div>
-            <div>
-               <h3 className="font-bold text-white">{t("Admin Support", "Admin Support")}</h3>
-               <p className="text-[10px] text-emerald-400 flex items-center"><span className="w-2 h-2 bg-emerald-500 rounded-full mr-1.5 animate-pulse"></span> Active</p>
-            </div>
-         </div>
+        <div className="p-4 border-b border-white/10 bg-black/20 flex items-center space-x-3 shrink-0">
+          <div className="w-10 h-10 rounded-full bg-indigo-900/50 flex items-center justify-center border border-indigo-500/30">
+            <Headset className="h-5 w-5 text-indigo-400" />
+          </div>
+          <div>
+            <h3 className="font-bold text-white">{t("Admin Support", "Admin Support")}</h3>
+            <p className="text-[10px] text-emerald-400 flex items-center"><span className="w-2 h-2 bg-emerald-500 rounded-full mr-1.5 animate-pulse"></span> Active</p>
+          </div>
+        </div>
 
-         <div ref={chatContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 min-h-0 bg-black/10 scroll-smooth">
-            {chats.length === 0 ? (
-               <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-4">
-                  <MessageCircle className="h-16 w-16 opacity-20" />
-                  <p>{t("No messages yet. Say hello to your admin!", "Abhi tak koi message nahi hai. Admin ko message bhejein!")}</p>
-               </div>
-            ) : (
-               chats.map(c => (
-                 <div key={c.id} className={`flex ${c.sender_role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] p-3 rounded-2xl ${c.sender_role === 'user' ? 'bg-cyan-600 text-white rounded-br-sm shadow-md' : 'bg-slate-800 text-slate-200 rounded-bl-sm border border-white/5'}`}>
-                       <p className="text-sm leading-relaxed">{c.message}</p>
-                       <p className={`text-[9px] mt-1 text-right ${c.sender_role === 'user' ? 'text-cyan-200/70' : 'text-slate-500'}`}>
-                         {new Date(Number(c.createdAt)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                       </p>
-                    </div>
-                 </div>
-               ))
-            )}
-         </div>
+        <div ref={chatContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 min-h-0 bg-black/10 scroll-smooth">
+          {chats.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-4">
+              <MessageCircle className="h-16 w-16 opacity-20" />
+              <p>{t("No messages yet. Say hello to your admin!", "Abhi tak koi message nahi hai. Admin ko message bhejein!")}</p>
+            </div>
+          ) : (
+            chats.map(c => (
+              <div key={c.id} className={`flex ${c.sender_role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] p-3 rounded-2xl ${c.sender_role === 'user' ? 'bg-cyan-600 text-white rounded-br-sm shadow-md' : 'bg-slate-800 text-slate-200 rounded-bl-sm border border-white/5'}`}>
+                  <p className="text-sm leading-relaxed">{c.message}</p>
+                  <p className={`text-[9px] mt-1 text-right ${c.sender_role === 'user' ? 'text-cyan-200/70' : 'text-slate-500'}`}>
+                    {new Date(Number(c.createdAt)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
 
-         <div className="p-4 bg-[#111318] border-t border-white/10 shrink-0">
-            <form onSubmit={handleSend} className="flex items-center space-x-3">
-               <input 
-                 type="text" 
-                 value={msgInput}
-                 onChange={(e) => setMsgInput(e.target.value)}
-                 placeholder={t("Type your message here...", "Apna message yahan likhein...")}
-                 className="flex-1 bg-black/40 border border-white/10 rounded-full px-5 py-4 text-sm text-white focus:ring-1 focus:ring-cyan-500 outline-none transition-colors"
-               />
-               <button type="submit" disabled={!msgInput.trim()} className="w-14 h-14 rounded-full bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white flex items-center justify-center transition-colors shadow-[0_0_15px_rgba(6,182,212,0.3)] disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
-                  <Send className="h-5 w-5 ml-1" />
-               </button>
-            </form>
-         </div>
+        <div className="p-4 bg-[#111318] border-t border-white/10 shrink-0">
+          <form onSubmit={handleSend} className="flex items-center space-x-3">
+            <input
+              type="text"
+              value={msgInput}
+              onChange={(e) => setMsgInput(e.target.value)}
+              placeholder={t("Type your message here...", "Apna message yahan likhein...")}
+              className="flex-1 bg-black/40 border border-white/10 rounded-full px-5 py-4 text-sm text-white focus:ring-1 focus:ring-cyan-500 outline-none transition-colors"
+            />
+            <button type="submit" disabled={!msgInput.trim()} className="w-14 h-14 rounded-full bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white flex items-center justify-center transition-colors shadow-[0_0_15px_rgba(6,182,212,0.3)] disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+              <Send className="h-5 w-5 ml-1" />
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
 }
 
-
 // ----------------------------------------------------------------------
-// ADMIN PROFILES VIEW (UPDATED WITH KYC DOCUMENT VIEWER)
+// ADMIN PROFILES VIEW (100% COMPLETE WITH ALL MODALS)
 // ----------------------------------------------------------------------
-// ----------------------------------------------------------------------
-// ADMIN PROFILES VIEW (UPDATED WITH SMART SEARCH BAR)
-// ----------------------------------------------------------------------
-function AdminProfilesView({ profiles, loans, adminId, onSave, onDelete, onSendMessage, showAlert }) {
+export function AdminProfilesView({ profiles, loans, adminId, onSave, onDelete, onSendMessage, showAlert }) {
+  const { t } = React.useContext(LanguageContext);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
   const [userId, setUserId] = useState('');
   const [fullName, setFullName] = useState('');
-  const [fatherName, setFatherName] = useState(''); 
-  const [aadharNo, setAadharNo] = useState(''); 
+  const [fatherName, setFatherName] = useState('');
+  const [aadharNo, setAadharNo] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [kycStatus, setKycStatus] = useState('Pending');
 
-  // NAYA: Search State
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const [notifyModal, setNotifyModal] = useState({ isOpen: false, userId: null, userName: '' });
   const [notifyMessage, setNotifyMessage] = useState('');
-  
+
   const [docsModal, setDocsModal] = useState({ isOpen: false, profile: null });
   const [viewModal, setViewModal] = useState({ isOpen: false, profile: null });
 
@@ -965,23 +1036,34 @@ function AdminProfilesView({ profiles, loans, adminId, onSave, onDelete, onSendM
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!userId || !fullName) { showAlert("Warning", "User ID aur Naam zaroori hai!"); return; }
-    if (!isValidUUID(userId.trim())) { showAlert("Warning", "User ID format galat hai!"); return; }
+    if (!userId || !fullName) { showAlert(t("Warning", "चेतावनी"), t("User ID and Name are required!", "यूजर आईडी और नाम जरूरी है!")); return; }
+    if (!isValidUUID(userId.trim())) { showAlert(t("Warning", "चेतावनी"), t("Incorrect User ID format!", "यूजर आईडी फॉर्मेट गलत है!")); return; }
     const data = { admin_id: adminId, user_id: userId.trim(), full_name: fullName, father_name: fatherName, aadhar_no: aadharNo, phone: phone, address: address, kyc_status: kycStatus };
     if (editId) data.id = editId; else data.createdAt = Date.now();
     onSave(data, !!editId);
     setShowForm(false);
   };
 
-  // NAYA: Search Filtering Logic
-  const filteredProfiles = profiles.filter(p => {
+  const enrichedProfiles = profiles.map(p => {
+    const hasActiveLoan = loans.some(l => l.user_id === p.user_id && l.status === 'active');
+    return { ...p, isActiveBorrower: hasActiveLoan };
+  });
+
+  const filteredProfiles = enrichedProfiles.filter(p => {
     const searchLower = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = (
       (p.full_name && p.full_name.toLowerCase().includes(searchLower)) ||
       (p.phone && p.phone.includes(searchTerm)) ||
       (p.aadhar_no && p.aadhar_no.includes(searchTerm)) ||
       (p.user_id && p.user_id.toLowerCase().includes(searchLower))
     );
+
+    const matchesStatus = 
+      statusFilter === 'all' || 
+      (statusFilter === 'active' && p.isActiveBorrower) || 
+      (statusFilter === 'inactive' && !p.isActiveBorrower);
+
+    return matchesSearch && matchesStatus;
   });
 
   return (
@@ -989,56 +1071,74 @@ function AdminProfilesView({ profiles, loans, adminId, onSave, onDelete, onSendM
       <header className="mb-8 flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div>
           <h1 className="text-4xl font-bold text-white tracking-tight">User <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400">Profiles</span></h1>
-          <p className="text-slate-400 mt-2 text-lg">Apne users ka data aur KYC manage karein.</p>
+          <p className="text-slate-400 mt-2 text-lg">{t("Manage user data and KYC.", "अपने यूजर्स का डेटा और KYC मैनेज करें।")}</p>
         </div>
-        
-        <div className="flex flex-col sm:flex-row gap-3">
-           {/* NAYA: Search Bar UI */}
-           <div className="relative w-full sm:w-64 md:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Naam, Phone ya Aadhar se khojein..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm focus:ring-1 focus:ring-cyan-500 outline-none transition-all"
-              />
-           </div>
 
-           <button onClick={showForm ? () => setShowForm(false) : openNewForm} className="flex items-center justify-center space-x-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white px-5 py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-cyan-500/30 whitespace-nowrap">
-             {showForm ? <X className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
-             <span>{showForm ? 'Band Karein' : 'Naya User'}</span>
-           </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative w-full sm:w-56 md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder={t("Search...", "नाम, फोन से खोजें...")}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm focus:ring-1 focus:ring-cyan-500 outline-none transition-all"
+            />
+          </div>
+
+          <div className="w-full sm:w-40">
+            <select 
+              value={statusFilter} 
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm focus:ring-1 focus:ring-cyan-500 outline-none appearance-none cursor-pointer"
+            >
+              <option value="all" className="bg-slate-900">{t("All Users", "सभी यूजर्स")}</option>
+              <option value="active" className="bg-slate-900">{t("Active Borrowers", "एक्टिव कर्जदार")}</option>
+              <option value="inactive" className="bg-slate-900">{t("Inactive Users", "इनएक्टिव यूजर्स")}</option>
+            </select>
+          </div>
+
+          <button onClick={showForm ? () => setShowForm(false) : openNewForm} className="flex items-center justify-center space-x-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white px-5 py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-cyan-500/30 whitespace-nowrap">
+            {showForm ? <X className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
+            <span>{showForm ? t('Close', 'बंद करें') : t('New User', 'नया यूजर')}</span>
+          </button>
         </div>
       </header>
 
-      {/* Admin Profile Form (Hidden by default) */}
       {showForm && (
         <div className="bg-white/5 backdrop-blur-xl rounded-3xl border border-cyan-500/30 p-8 shadow-[0_0_30px_rgba(34,211,238,0.1)] mb-8 animate-in slide-in-from-top-4">
           <h2 className="text-xl font-bold text-white mb-6 flex items-center space-x-2">
-            <User className="text-cyan-400 h-6 w-6" /> 
-            <span>{editId ? 'Profile Edit Karein' : 'Naya User Data Bharein'}</span>
+            <User className="text-cyan-400 h-6 w-6" />
+            <span>{editId ? t('Edit Profile', 'प्रोफाइल एडिट करें') : t('Enter New User Data', 'नया यूजर डेटा भरें')}</span>
           </h2>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2 md:col-span-2">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">User ID (Auth ID)</label>
-              <input type="text" value={userId} onChange={(e)=>setUserId(e.target.value)} placeholder="Jaise: 550e8400-e29b-41d4-a716..." className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none font-mono text-sm" required />
+              <input type="text" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="550e8400-e29b-41d4-a716..." className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none font-mono text-sm" required />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Poora Naam</label>
-              <input type="text" value={fullName} onChange={(e)=>setFullName(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none" required />
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("Full Name", "पूरा नाम")}</label>
+              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none" required />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Pita Ka Naam</label>
-              <input type="text" value={fatherName} onChange={(e)=>setFatherName(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none" />
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("Father's Name", "पिता का नाम")}</label>
+              <input type="text" value={fatherName} onChange={(e) => setFatherName(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none" />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Aadhar Number</label>
-              <input type="text" value={aadharNo} onChange={(e)=>setAadharNo(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none tracking-widest" />
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("Aadhar Number", "आधार नंबर")}</label>
+              <input type="text" value={aadharNo} onChange={(e) => setAadharNo(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none tracking-widest" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("Phone Number", "फोन नंबर")}</label>
+              <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none" />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("Address", "पता")}</label>
+              <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none" />
             </div>
             <div className="space-y-2">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">KYC Status</label>
-              <select value={kycStatus} onChange={(e)=>setKycStatus(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none">
+              <select value={kycStatus} onChange={(e) => setKycStatus(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none">
                 <option value="Pending" className="bg-slate-900">Pending</option>
                 <option value="Verified" className="bg-slate-900">Verified</option>
                 <option value="Rejected" className="bg-slate-900">Rejected</option>
@@ -1046,193 +1146,205 @@ function AdminProfilesView({ profiles, loans, adminId, onSave, onDelete, onSendM
             </div>
             <div className="md:col-span-2 flex justify-end mt-4">
               <button type="submit" className="bg-cyan-500 hover:bg-cyan-400 text-black px-8 py-3 rounded-xl font-bold transition-colors">
-                {editId ? 'Save Changes' : 'Profile Banayein'}
+                {editId ? t('Save Changes', 'बदलाव सेव करें') : t('Create Profile', 'प्रोफाइल बनाएं')}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* User list ab 'filteredProfiles' se render hogi */}
       <div className="grid grid-cols-1 gap-6 overflow-y-auto custom-scrollbar max-h-[600px] pr-2">
         {profiles.length === 0 && !showForm && (
-          <p className="text-slate-500 text-center py-10 bg-white/5 rounded-3xl border border-white/5">Abhi tak koi user profile nahi bani hai.</p>
+          <p className="text-slate-500 text-center py-10 bg-white/5 rounded-3xl border border-white/5">{t("No user profiles created yet.", "अभी तक कोई यूजर प्रोफाइल नहीं बनी है।")}</p>
         )}
-        
-        {/* NAYA: Agar search me kuch nahi mila */}
+
         {profiles.length > 0 && filteredProfiles.length === 0 && (
           <div className="text-center py-10 bg-white/5 rounded-3xl border border-white/5">
-             <Search className="h-10 w-10 mx-auto text-slate-600 mb-3" />
-             <p className="text-slate-400">"{searchTerm}" se koi user nahi mila.</p>
+            <Search className="h-10 w-10 mx-auto text-slate-600 mb-3" />
+            <p className="text-slate-400">{t("No users found for this search.", "इस खोज से कोई यूजर नहीं मिला।")}</p>
           </div>
         )}
 
         {filteredProfiles.map(p => {
           return (
-          <div key={p.id} className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-6 flex flex-col md:flex-row justify-between gap-6 hover:bg-white/10 transition-colors shrink-0">
-            <div className="flex-1 space-y-4">
-              <div className="flex items-center space-x-3">
-                <div className="bg-indigo-500/20 p-3 rounded-full"><User className="text-indigo-400 h-6 w-6"/></div>
-                <div>
-                  <h3 
-                    onClick={() => setViewModal({ isOpen: true, profile: p })}
-                    className="text-xl font-bold text-white cursor-pointer hover:text-cyan-400 transition-colors inline-block"
-                    title="Profile Dekhne Ke Liye Click Karein"
-                  >
-                    {p.full_name || 'Naam Nahi Diya'}
-                  </h3>
-                  <div className="mt-1">
-                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${p.kyc_status === 'Verified' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-orange-500/10 text-orange-400 border-orange-500/20'}`}>
-                      KYC: {p.kyc_status}
-                    </span>
+            <div key={p.id} className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-6 flex flex-col md:flex-row justify-between gap-6 hover:bg-white/10 transition-colors shrink-0">
+              <div className="flex-1 space-y-4">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-indigo-500/20 p-3 rounded-full"><User className="text-indigo-400 h-6 w-6" /></div>
+                  <div>
+                    <h3
+                      onClick={() => setViewModal({ isOpen: true, profile: p })}
+                      className="text-xl font-bold text-white cursor-pointer hover:text-cyan-400 transition-colors flex items-center"
+                      title={t("Click to view profile", "प्रोफाइल देखने के लिए क्लिक करें")}
+                    >
+                      {p.full_name || t('Unnamed', 'नाम नहीं दिया')}
+                      {p.isActiveBorrower ? (
+                        <span className="ml-3 text-[9px] bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full flex items-center uppercase tracking-widest">
+                          <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1 animate-pulse"></span> {t("Active", "एक्टिव")}
+                        </span>
+                      ) : (
+                        <span className="ml-3 text-[9px] bg-slate-500/20 text-slate-400 border border-slate-500/30 px-2 py-0.5 rounded-full flex items-center uppercase tracking-widest">
+                          <span className="w-1.5 h-1.5 bg-slate-500 rounded-full mr-1"></span> {t("Inactive", "इनएक्टिव")}
+                        </span>
+                      )}
+                    </h3>
+                    <div className="mt-1">
+                      <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${p.kyc_status === 'Verified' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-orange-500/10 text-orange-400 border-orange-500/20'}`}>
+                        KYC: {p.kyc_status === 'Verified' ? t('Verified', 'वेरीफाइड') : t('Pending', 'पेंडिंग')}
+                      </span>
+                    </div>
                   </div>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-300">
+                  <div className="flex items-center space-x-2"><Phone className="h-4 w-4 text-cyan-500" /> <span>{p.phone || 'N/A'}</span></div>
+                  <div className="flex items-center space-x-2"><Hash className="h-4 w-4 text-cyan-500" /> <span>{t("Aadhar", "आधार")}: {p.aadhar_no || 'N/A'}</span></div>
+                  <div className="col-span-1 sm:col-span-2 text-xs font-mono text-slate-500 mt-2">User ID: {p.user_id}</div>
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-300">
-                <div className="flex items-center space-x-2"><Phone className="h-4 w-4 text-cyan-500"/> <span>{p.phone || 'N/A'}</span></div>
-                <div className="flex items-center space-x-2"><Hash className="h-4 w-4 text-cyan-500"/> <span>Aadhar: {p.aadhar_no || 'N/A'}</span></div>
-                <div className="col-span-1 sm:col-span-2 text-xs font-mono text-slate-500 mt-2">User ID: {p.user_id}</div>
+
+              <div className="flex flex-wrap md:flex-col gap-3 justify-center border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-6 shrink-0 min-w-[140px]">
+                <button onClick={() => setDocsModal({ isOpen: true, profile: p })} className="flex items-center justify-center space-x-2 px-4 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 rounded-lg transition-colors flex-1 md:flex-none">
+                  <FileText className="h-4 w-4" /> <span>{t("KYC Docs", "KYC डाक्स")}</span>
+                </button>
+                <button onClick={() => openEditForm(p)} className="flex items-center justify-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-cyan-400 rounded-lg transition-colors flex-1 md:flex-none">
+                  <Edit className="h-4 w-4" /> <span>{t("Edit", "एडिट")}</span>
+                </button>
+                <button onClick={() => setNotifyModal({ isOpen: true, userId: p.user_id, userName: p.full_name })} className="flex items-center justify-center space-x-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg transition-colors flex-1 md:flex-none">
+                  <Bell className="h-4 w-4" /> <span>{t("Notify", "नोटिफाई")}</span>
+                </button>
+                <button onClick={() => onDelete(p)} className="flex items-center justify-center space-x-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg transition-colors flex-1 md:flex-none">
+                  <Trash className="h-4 w-4" /> <span>{t("Delete", "डिलीट")}</span>
+                </button>
               </div>
             </div>
-            
-            <div className="flex flex-wrap md:flex-col gap-3 justify-center border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-6 shrink-0 min-w-[140px]">
-              <button onClick={() => setDocsModal({ isOpen: true, profile: p })} className="flex items-center justify-center space-x-2 px-4 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 rounded-lg transition-colors flex-1 md:flex-none">
-                <FileText className="h-4 w-4" /> <span>KYC Docs</span>
+          )
+        })}
+      </div>
+
+      {/* ------------------------------------------------------------- */}
+      {/* USER PROFILE VIEWER MODAL (Name pe click karne par khulega) */}
+      {/* ------------------------------------------------------------- */}
+      {viewModal.isOpen && viewModal.profile && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-[#111318] border border-cyan-500/30 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_rgba(34,211,238,0.15)] max-w-2xl w-full relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <button onClick={() => setViewModal({ isOpen: false, profile: null })} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X className="h-6 w-6" /></button>
+
+            <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6 mb-8 border-b border-white/10 pb-6 mt-4">
+              <div className="w-20 h-20 rounded-full bg-cyan-900/50 flex items-center justify-center border border-cyan-500/30 shrink-0">
+                <User className="h-10 w-10 text-cyan-400" />
+              </div>
+              <div className="text-center sm:text-left">
+                <h2 className="text-3xl font-bold text-white mb-1">{viewModal.profile.full_name || t('Unnamed', 'नाम नहीं दिया')}</h2>
+                {viewModal.profile.father_name && <p className="text-slate-400 text-sm mb-2">S/O {viewModal.profile.father_name}</p>}
+                <span className={`inline-flex items-center text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${viewModal.profile.kyc_status === 'Verified' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-orange-500/10 text-orange-400 border-orange-500/20'}`}>
+                  {viewModal.profile.kyc_status === 'Verified' ? <Check className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
+                  KYC: {viewModal.profile.kyc_status === 'Verified' ? t('Verified', 'वेरीफाइड') : t('Pending', 'पेंडिंग')}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+              <div className="bg-black/40 p-5 rounded-2xl border border-white/5">
+                <p className="text-xs text-slate-500 uppercase tracking-widest mb-1 flex items-center"><Phone className="h-3 w-3 mr-2" /> {t("Phone Number", "फोन नंबर")}</p>
+                <p className="text-lg font-medium text-slate-200">{viewModal.profile.phone || 'N/A'}</p>
+              </div>
+              <div className="bg-black/40 p-5 rounded-2xl border border-white/5">
+                <p className="text-xs text-slate-500 uppercase tracking-widest mb-1 flex items-center"><Hash className="h-3 w-3 mr-2" /> {t("Aadhar Number", "आधार नंबर")}</p>
+                <p className="text-lg font-medium text-slate-200 tracking-widest">{viewModal.profile.aadhar_no || 'N/A'}</p>
+              </div>
+              <div className="bg-black/40 p-5 rounded-2xl border border-white/5 sm:col-span-2">
+                <p className="text-xs text-slate-500 uppercase tracking-widest mb-1 flex items-center"><MapPin className="h-3 w-3 mr-2" /> {t("Address", "पता")}</p>
+                <p className="text-base font-medium text-slate-300 leading-relaxed">{viewModal.profile.address || t('Address not provided.', 'पता नहीं दिया गया है।')}</p>
+              </div>
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 sm:col-span-2">
+                <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">User ID (System Tracking)</p>
+                <p className="text-xs font-mono text-cyan-500/70 break-all">{viewModal.profile.user_id}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-end gap-3">
+              <button onClick={() => { setDocsModal({ isOpen: true, profile: viewModal.profile }); setViewModal({ isOpen: false, profile: null }); }} className="bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 px-6 py-3 rounded-xl font-bold transition-all">
+                {t("View KYC Docs", "KYC डाक्स देखें")}
               </button>
-              <button onClick={() => openEditForm(p)} className="flex items-center justify-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-cyan-400 rounded-lg transition-colors flex-1 md:flex-none">
-                <Edit className="h-4 w-4" /> <span>Edit</span>
-              </button>
-              <button onClick={() => setNotifyModal({ isOpen: true, userId: p.user_id, userName: p.full_name })} className="flex items-center justify-center space-x-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg transition-colors flex-1 md:flex-none">
-                <Bell className="h-4 w-4" /> <span>Notify</span>
-              </button>
-              <button onClick={() => onDelete(p)} className="flex items-center justify-center space-x-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg transition-colors flex-1 md:flex-none">
-                <Trash className="h-4 w-4" /> <span>Delete</span>
+              <button onClick={() => setViewModal({ isOpen: false, profile: null })} className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-xl font-bold transition-all border border-white/10">
+                {t("Close", "बंद करें")}
               </button>
             </div>
           </div>
-        )})}
-      </div>
-
-      {/* USER PROFILE VIEWER MODAL */}
-      {viewModal.isOpen && viewModal.profile && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-           <div className="bg-[#111318] border border-cyan-500/30 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_rgba(34,211,238,0.15)] max-w-2xl w-full relative max-h-[90vh] overflow-y-auto custom-scrollbar">
-              <button onClick={() => setViewModal({isOpen: false, profile: null})} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X className="h-6 w-6" /></button>
-              
-              <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6 mb-8 border-b border-white/10 pb-6">
-                 <div className="w-20 h-20 rounded-full bg-cyan-900/50 flex items-center justify-center border border-cyan-500/30 shrink-0">
-                    <User className="h-10 w-10 text-cyan-400" />
-                 </div>
-                 <div className="text-center sm:text-left">
-                    <h2 className="text-3xl font-bold text-white mb-1">{viewModal.profile.full_name}</h2>
-                    {viewModal.profile.father_name && <p className="text-slate-400 text-sm mb-2">S/O {viewModal.profile.father_name}</p>}
-                    <span className={`inline-flex items-center text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${viewModal.profile.kyc_status === 'Verified' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-orange-500/10 text-orange-400 border-orange-500/20'}`}>
-                      {viewModal.profile.kyc_status === 'Verified' ? <Check className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
-                      KYC: {viewModal.profile.kyc_status}
-                    </span>
-                 </div>
-              </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-                 <div className="bg-black/40 p-5 rounded-2xl border border-white/5">
-                    <p className="text-xs text-slate-500 uppercase tracking-widest mb-1 flex items-center"><Phone className="h-3 w-3 mr-2" /> Phone Number</p>
-                    <p className="text-lg font-medium text-slate-200">{viewModal.profile.phone || 'N/A'}</p>
-                 </div>
-                 <div className="bg-black/40 p-5 rounded-2xl border border-white/5">
-                    <p className="text-xs text-slate-500 uppercase tracking-widest mb-1 flex items-center"><Hash className="h-3 w-3 mr-2" /> Aadhar Number</p>
-                    <p className="text-lg font-medium text-slate-200 tracking-widest">{viewModal.profile.aadhar_no || 'N/A'}</p>
-                 </div>
-                 <div className="bg-black/40 p-5 rounded-2xl border border-white/5 sm:col-span-2">
-                    <p className="text-xs text-slate-500 uppercase tracking-widest mb-1 flex items-center"><MapPin className="h-3 w-3 mr-2" /> Pata (Address)</p>
-                    <p className="text-base font-medium text-slate-300 leading-relaxed">{viewModal.profile.address || 'Address nahi diya gaya hai.'}</p>
-                 </div>
-                 <div className="bg-black/40 p-4 rounded-2xl border border-white/5 sm:col-span-2">
-                    <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">User ID (System Tracking)</p>
-                    <p className="text-xs font-mono text-cyan-500/70 break-all">{viewModal.profile.user_id}</p>
-                 </div>
-              </div>
-              
-              <div className="flex justify-end gap-3">
-                 <button onClick={() => { setDocsModal({ isOpen: true, profile: viewModal.profile }); setViewModal({isOpen: false, profile: null}); }} className="bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 px-6 py-3 rounded-xl font-bold transition-all">
-                    KYC Docs Dekhein
-                 </button>
-                 <button onClick={() => setViewModal({isOpen: false, profile: null})} className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-xl font-bold transition-all border border-white/10">
-                    Band Karein
-                 </button>
-              </div>
-           </div>
         </div>
       )}
 
       {/* KYC DOCUMENTS VIEWER MODAL */}
       {docsModal.isOpen && docsModal.profile && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200">
-           <div className="bg-[#111318] border border-purple-500/30 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_rgba(168,85,247,0.15)] max-w-4xl w-full relative max-h-[90vh] overflow-y-auto custom-scrollbar">
-              <button onClick={() => setDocsModal({isOpen: false, profile: null})} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors bg-black/50 p-2 rounded-full"><X className="h-6 w-6" /></button>
-              
-              <div className="flex items-center space-x-3 mb-6">
-                 <div className="p-3 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl border border-purple-500/30">
-                   <Shield className="h-6 w-6 text-purple-400" />
-                 </div>
-                 <div>
-                   <h3 className="text-2xl font-bold text-white tracking-tight">{docsModal.profile.full_name} - KYC Documents</h3>
-                   <p className="text-slate-400 text-sm">Aadhar Number: <span className="text-white font-mono">{docsModal.profile.aadhar_no || 'Not Provided'}</span></p>
-                 </div>
+          <div className="bg-[#111318] border border-purple-500/30 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_rgba(168,85,247,0.15)] max-w-4xl w-full relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <button onClick={() => setDocsModal({ isOpen: false, profile: null })} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors bg-black/50 p-2 rounded-full"><X className="h-6 w-6" /></button>
+
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="p-3 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl border border-purple-500/30">
+                <Shield className="h-6 w-6 text-purple-400" />
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <DocViewer title="Aadhar Front" url={docsModal.profile.aadhar_front_url} />
-                 <DocViewer title="Aadhar Back" url={docsModal.profile.aadhar_back_url} />
-                 <DocViewer title="PAN Card" url={docsModal.profile.pan_url} />
-                 <DocViewer title="Selfie" url={docsModal.profile.selfie_url} />
+              <div>
+                <h3 className="text-2xl font-bold text-white tracking-tight">{docsModal.profile.full_name} - {t("KYC Documents", "KYC डाक्यूमेंट्स")}</h3>
+                <p className="text-slate-400 text-sm">{t("Aadhar Number", "आधार नंबर")}: <span className="text-white font-mono">{docsModal.profile.aadhar_no || 'N/A'}</span></p>
               </div>
-              
-              <div className="mt-8 pt-6 border-t border-white/10 flex justify-end gap-4">
-                 <button onClick={() => { onSave({...docsModal.profile, kyc_status: 'Rejected'}, true); setDocsModal({isOpen: false, profile: null}); }} className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/50 px-6 py-3 rounded-xl font-bold transition-all">Reject KYC</button>
-                 <button onClick={() => { onSave({...docsModal.profile, kyc_status: 'Verified'}, true); setDocsModal({isOpen: false, profile: null}); }} className="bg-emerald-500 hover:bg-emerald-400 text-black px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center"><Check className="h-5 w-5 mr-2"/> Approve KYC</button>
-              </div>
-           </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <DocViewer title="Aadhar Front" url={docsModal.profile.aadhar_front_url} t={t} />
+              <DocViewer title="Aadhar Back" url={docsModal.profile.aadhar_back_url} t={t} />
+              <DocViewer title="PAN Card" url={docsModal.profile.pan_url} t={t} />
+              <DocViewer title="Selfie" url={docsModal.profile.selfie_url} t={t} />
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-white/10 flex flex-col sm:flex-row justify-end gap-4">
+              <button onClick={() => { onSave({ ...docsModal.profile, kyc_status: 'Rejected' }, true); setDocsModal({ isOpen: false, profile: null }); }} className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/50 px-6 py-3 rounded-xl font-bold transition-all">{t("Reject KYC", "KYC रद्द करें")}</button>
+              <button onClick={() => { onSave({ ...docsModal.profile, kyc_status: 'Verified' }, true); setDocsModal({ isOpen: false, profile: null }); }} className="bg-emerald-500 hover:bg-emerald-400 text-black px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center"><Check className="h-5 w-5 mr-2" /> {t("Approve KYC", "KYC पास करें")}</button>
+            </div>
+          </div>
         </div>
       )}
 
       {/* NOTIFICATION MODAL */}
       {notifyModal.isOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-           <div className="bg-[#111318] border border-amber-500/30 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_rgba(245,158,11,0.15)] max-w-md w-full relative">
-              <button onClick={() => setNotifyModal({isOpen: false, userId: null, userName: ''})} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X className="h-6 w-6" /></button>
-              <h3 className="text-2xl font-bold text-white mb-4 flex items-center"><Bell className="h-6 w-6 mr-3 text-amber-400" /> Notify {notifyModal.userName}</h3>
-              <textarea value={notifyMessage} onChange={(e) => setNotifyMessage(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-sm focus:ring-1 focus:ring-amber-500 outline-none resize-none h-32 mb-6" placeholder="Message likhein..."></textarea>
-              <div className="flex gap-3">
-                <button onClick={() => setNotifyModal({isOpen: false, userId: null, userName: ''})} className="flex-1 bg-white/5 text-slate-300 hover:text-white py-3.5 rounded-2xl font-bold transition-all border border-white/10">Cancel</button>
-                <button onClick={() => { if(!notifyMessage.trim()) return; onSendMessage(notifyModal.userId, notifyMessage); setNotifyModal({ isOpen: false, userId: null, userName: '' }); setNotifyMessage(''); }} className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black py-3.5 rounded-2xl font-bold shadow-[0_0_20px_rgba(245,158,11,0.3)]">Bhejein</button>
-              </div>
-           </div>
+          <div className="bg-[#111318] border border-amber-500/30 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_rgba(245,158,11,0.15)] max-w-md w-full relative">
+            <button onClick={() => setNotifyModal({ isOpen: false, userId: null, userName: '' })} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X className="h-6 w-6" /></button>
+            <h3 className="text-2xl font-bold text-white mb-4 flex items-center"><Bell className="h-6 w-6 mr-3 text-amber-400" /> {t("Notify", "नोटिफाई")} {notifyModal.userName}</h3>
+            <textarea value={notifyMessage} onChange={(e) => setNotifyMessage(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-sm focus:ring-1 focus:ring-amber-500 outline-none resize-none h-32 mb-6" placeholder={t("Type your message...", "मैसेज लिखें...")}></textarea>
+            <div className="flex gap-3">
+              <button onClick={() => setNotifyModal({ isOpen: false, userId: null, userName: '' })} className="flex-1 bg-white/5 text-slate-300 hover:text-white py-3.5 rounded-2xl font-bold transition-all border border-white/10">{t("Cancel", "रद्द करें")}</button>
+              <button onClick={() => { if (!notifyMessage.trim()) return; onSendMessage(notifyModal.userId, notifyMessage); setNotifyModal({ isOpen: false, userId: null, userName: '' }); setNotifyMessage(''); }} className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black py-3.5 rounded-2xl font-bold shadow-[0_0_20px_rgba(245,158,11,0.3)]">{t("Send", "भेजें")}</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ... aapka upar ka code (AdminProfilesView etc.)
-
-// Helper Component for Admin KYC Viewer (SIRF EK BAAR HONA CHAHIYE)
-function DocViewer({ title, url }) {
+// ----------------------------------------------------------------------
+// HELPER COMPONENT FOR KYC DOCUMENTS (Only used inside AdminProfilesView)
+// ----------------------------------------------------------------------
+export function DocViewer({ title, url, t }) {
   return (
     <div className="bg-black/40 border border-white/5 rounded-2xl p-4 flex flex-col">
-       <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">{title}</h4>
-       <div className="flex-1 bg-black/60 rounded-xl border border-white/5 overflow-hidden min-h-[200px] flex items-center justify-center relative group">
-          {url ? (
-             <>
-               <img src={url} alt={title} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-               <a href={url} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold backdrop-blur-sm">Click to View Full</a>
-             </>
-          ) : (
-             <div className="text-center text-slate-600 flex flex-col items-center">
-                <FileText className="h-8 w-8 mb-2 opacity-50" />
-                <span className="text-xs uppercase tracking-widest">Not Uploaded</span>
-             </div>
-          )}
-       </div>
+      <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">{title}</h4>
+      <div className="flex-1 bg-black/60 rounded-xl border border-white/5 overflow-hidden min-h-[200px] flex items-center justify-center relative group">
+        {url ? (
+          <>
+            <img src={url} alt={title} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+            <a href={url} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold backdrop-blur-sm">
+              {t("Click to View Full", "पूरा देखने के लिए क्लिक करें")}
+            </a>
+          </>
+        ) : (
+          <div className="text-center text-slate-600 flex flex-col items-center">
+            <FileText className="h-8 w-8 mb-2 opacity-50" />
+            <span className="text-xs uppercase tracking-widest">{t("Not Uploaded", "अपलोड नहीं हुआ")}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1269,20 +1381,20 @@ function AIChatbotWidget({ session, loans, profiles, isAdmin, t, lang }) {
       // AI ko app ka live context dena
       let contextInfo = "";
       if (isAdmin) {
-         const activeLoans = loans.filter(l => l.status === 'active');
-         const totalDisbursed = activeLoans.reduce((sum, l) => sum + Number(l.amount || 0), 0);
-         contextInfo = `[Admin Context: You are talking to the App Admin. Total active loans: ${activeLoans.length}, Total Disbursed: ₹${totalDisbursed}, Total Users: ${profiles.length}.]`;
+        const activeLoans = loans.filter(l => l.status === 'active');
+        const totalDisbursed = activeLoans.reduce((sum, l) => sum + Number(l.amount || 0), 0);
+        contextInfo = `[Admin Context: You are talking to the App Admin. Total active loans: ${activeLoans.length}, Total Disbursed: ₹${totalDisbursed}, Total Users: ${profiles.length}.]`;
       } else {
-         const userLoans = loans.filter(l => l.status === 'active');
-         const totalBorrowed = userLoans.reduce((sum, l) => sum + Number(l.amount || 0), 0);
-         contextInfo = `[User Context: You are talking to a Borrower. They have ${userLoans.length} active loans totaling ₹${totalBorrowed}.]`;
+        const userLoans = loans.filter(l => l.status === 'active');
+        const totalBorrowed = userLoans.reduce((sum, l) => sum + Number(l.amount || 0), 0);
+        contextInfo = `[User Context: You are talking to a Borrower. They have ${userLoans.length} active loans totaling ₹${totalBorrowed}.]`;
       }
 
       // Purani chat history ko ek string mein badalna taaki AI ko pichli baatein yaad rahein
       const historyString = newMessages.map(m => `${m.role === 'ai' ? 'AI' : 'User'}: ${m.text}`).join('\n');
-      
+
       const sysInst = `You are LeaderPro AI, a highly intelligent and polite financial assistant for a micro-lending CRM. Respond in ${lang === 'en' ? 'English' : 'Hinglish (Hindi in English script)'}. Keep answers short (2-3 sentences max). Use emojis. NO markdown asterisks (*). ${contextInfo}`;
-      
+
       const promptText = `Chat History:\n${historyString}\n\nBased on the history, respond directly to the latest User message.`;
 
       const response = await callGeminiAI(promptText, sysInst);
@@ -1297,7 +1409,7 @@ function AIChatbotWidget({ session, loans, profiles, isAdmin, t, lang }) {
   return (
     <>
       {/* Floating Chat Button */}
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
         className={`fixed bottom-6 right-6 z-[100] w-14 h-14 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(168,85,247,0.4)] transition-all duration-300 ${isOpen ? 'bg-red-500 hover:bg-red-400 rotate-90' : 'bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 hover:scale-110'}`}
       >
@@ -1307,7 +1419,7 @@ function AIChatbotWidget({ session, loans, profiles, isAdmin, t, lang }) {
       {/* Chat Window */}
       {isOpen && (
         <div className="fixed bottom-24 right-6 z-[100] w-[350px] max-w-[calc(100vw-3rem)] h-[500px] bg-[#111318]/95 backdrop-blur-xl border border-purple-500/30 rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300">
-          
+
           {/* Header */}
           <div className="bg-gradient-to-r from-purple-900/50 to-cyan-900/50 p-4 border-b border-white/10 flex items-center space-x-3 shrink-0">
             <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-cyan-500 rounded-full flex items-center justify-center p-2 shadow-lg">
@@ -1323,22 +1435,21 @@ function AIChatbotWidget({ session, loans, profiles, isAdmin, t, lang }) {
           <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
-                  msg.role === 'user' 
-                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-br-sm' 
-                    : 'bg-black/50 border border-white/5 text-slate-200 rounded-bl-sm'
-                }`}>
+                <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user'
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-br-sm'
+                  : 'bg-black/50 border border-white/5 text-slate-200 rounded-bl-sm'
+                  }`}>
                   {msg.text}
                 </div>
               </div>
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                 <div className="bg-black/50 border border-white/5 p-3 rounded-2xl rounded-bl-sm flex space-x-2 items-center">
-                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                 </div>
+                <div className="bg-black/50 border border-white/5 p-3 rounded-2xl rounded-bl-sm flex space-x-2 items-center">
+                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                </div>
               </div>
             )}
             <div ref={chatEndRef} />
@@ -1346,15 +1457,15 @@ function AIChatbotWidget({ session, loans, profiles, isAdmin, t, lang }) {
 
           {/* Input Area */}
           <form onSubmit={handleSend} className="p-3 bg-black/40 border-t border-white/10 shrink-0 flex items-center space-x-2">
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={t("Ask anything...", "Kuch bhi poochiye...")}
               className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
             />
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={!input.trim() || isLoading}
               className="w-10 h-10 rounded-full bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center shrink-0 disabled:opacity-50 transition-colors"
             >
@@ -1389,34 +1500,34 @@ function AdminInquiriesView({ inquiries, onUpdateStatus, onDelete, t }) {
         {inquiries.map(inq => (
           <div key={inq.id} className={`bg-[#111318] rounded-3xl border ${inq.status === 'unread' ? 'border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.1)]' : 'border-white/[0.04]'} p-6 flex flex-col md:flex-row md:items-start justify-between gap-6 transition-all shrink-0`}>
             <div className="flex-1 space-y-4">
-               <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-xl font-bold text-white flex items-center">
-                      {inq.name}
-                      {inq.status === 'unread' && <span className="ml-3 bg-blue-500 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded-full">{t("New", "Naya")}</span>}
-                    </h3>
-                    <p className="text-sm text-cyan-400 mt-1 flex items-center"><Mail className="h-3 w-3 mr-1" /> {inq.email}</p>
-                  </div>
-                  <span className="text-xs text-slate-500 font-mono">{new Date(inq.createdAt).toLocaleString('en-IN')}</span>
-               </div>
-               <div className="bg-black/30 p-4 rounded-2xl border border-white/5">
-                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{inq.message}</p>
-               </div>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-white flex items-center">
+                    {inq.name}
+                    {inq.status === 'unread' && <span className="ml-3 bg-blue-500 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded-full">{t("New", "Naya")}</span>}
+                  </h3>
+                  <p className="text-sm text-cyan-400 mt-1 flex items-center"><Mail className="h-3 w-3 mr-1" /> {inq.email}</p>
+                </div>
+                <span className="text-xs text-slate-500 font-mono">{new Date(inq.createdAt).toLocaleString('en-IN')}</span>
+              </div>
+              <div className="bg-black/30 p-4 rounded-2xl border border-white/5">
+                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{inq.message}</p>
+              </div>
             </div>
-            
+
             <div className="flex flex-row md:flex-col gap-3 justify-center shrink-0 md:w-32 border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-6">
-               {inq.status === 'unread' ? (
-                 <button onClick={() => onUpdateStatus(inq.id, 'read')} className="flex-1 md:flex-none flex items-center justify-center bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl transition-all text-sm font-bold">
-                    <Check className="h-4 w-4 mr-2" /> Read
-                 </button>
-               ) : (
-                 <button onClick={() => onUpdateStatus(inq.id, 'unread')} className="flex-1 md:flex-none flex items-center justify-center bg-white/5 hover:bg-white/10 text-slate-400 border border-white/10 px-4 py-2 rounded-xl transition-all text-sm font-bold">
-                    <MessageSquare className="h-4 w-4 mr-2" /> Unread
-                 </button>
-               )}
-               <button onClick={() => onDelete(inq.id)} className="flex-1 md:flex-none flex items-center justify-center bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-4 py-2 rounded-xl transition-all text-sm font-bold">
-                  <Trash className="h-4 w-4 mr-2" /> Delete
-               </button>
+              {inq.status === 'unread' ? (
+                <button onClick={() => onUpdateStatus(inq.id, 'read')} className="flex-1 md:flex-none flex items-center justify-center bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl transition-all text-sm font-bold">
+                  <Check className="h-4 w-4 mr-2" /> Read
+                </button>
+              ) : (
+                <button onClick={() => onUpdateStatus(inq.id, 'unread')} className="flex-1 md:flex-none flex items-center justify-center bg-white/5 hover:bg-white/10 text-slate-400 border border-white/10 px-4 py-2 rounded-xl transition-all text-sm font-bold">
+                  <MessageSquare className="h-4 w-4 mr-2" /> Unread
+                </button>
+              )}
+              <button onClick={() => onDelete(inq.id)} className="flex-1 md:flex-none flex items-center justify-center bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-4 py-2 rounded-xl transition-all text-sm font-bold">
+                <Trash className="h-4 w-4 mr-2" /> Delete
+              </button>
             </div>
           </div>
         ))}
@@ -1434,36 +1545,36 @@ function UserNotificationsModal({ notifications, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-       <div className="bg-[#111318] border border-white/10 p-6 md:p-8 rounded-3xl shadow-2xl max-w-md w-full relative max-h-[80vh] flex flex-col">
-          <button onClick={onClose} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X className="h-6 w-6" /></button>
-          
-          <div className="flex items-center space-x-3 mb-6 shrink-0">
-             <div className="p-2 bg-blue-500/20 rounded-xl">
-               <Bell className="h-6 w-6 text-blue-400" />
-             </div>
-             <h3 className="text-2xl font-bold text-white tracking-tight">Aapke Messages</h3>
-          </div>
-          
-          <div className="space-y-4 overflow-y-auto flex-1 pr-2 custom-scrollbar">
-             {notifs.length === 0 ? (
-                <div className="text-center py-10 text-slate-500">
-                   <MessageCircle className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                   <p>Abhi koi naya message nahi hai.</p>
-                </div>
-             ) : (
-                notifs.map((n, i) => (
-                   <div key={n.id || i} className="bg-black/40 p-4 rounded-2xl border border-white/[0.04]">
-                      <p className="text-[10px] text-slate-500 font-mono mb-2">{new Date(n.date).toLocaleString('en-IN')}</p>
-                      <p className="text-sm text-slate-200 leading-relaxed">{n.text}</p>
-                   </div>
-                ))
-             )}
-          </div>
+      <div className="bg-[#111318] border border-white/10 p-6 md:p-8 rounded-3xl shadow-2xl max-w-md w-full relative max-h-[80vh] flex flex-col">
+        <button onClick={onClose} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X className="h-6 w-6" /></button>
 
-          <button onClick={onClose} className="w-full mt-6 shrink-0 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white py-3.5 rounded-2xl font-bold transition-all duration-300">
-             Band Karein
-          </button>
-       </div>
+        <div className="flex items-center space-x-3 mb-6 shrink-0">
+          <div className="p-2 bg-blue-500/20 rounded-xl">
+            <Bell className="h-6 w-6 text-blue-400" />
+          </div>
+          <h3 className="text-2xl font-bold text-white tracking-tight">Aapke Messages</h3>
+        </div>
+
+        <div className="space-y-4 overflow-y-auto flex-1 pr-2 custom-scrollbar">
+          {notifs.length === 0 ? (
+            <div className="text-center py-10 text-slate-500">
+              <MessageCircle className="h-10 w-10 mx-auto mb-3 opacity-20" />
+              <p>Abhi koi naya message nahi hai.</p>
+            </div>
+          ) : (
+            notifs.map((n, i) => (
+              <div key={n.id || i} className="bg-black/40 p-4 rounded-2xl border border-white/[0.04]">
+                <p className="text-[10px] text-slate-500 font-mono mb-2">{new Date(n.date).toLocaleString('en-IN')}</p>
+                <p className="text-sm text-slate-200 leading-relaxed">{n.text}</p>
+              </div>
+            ))
+          )}
+        </div>
+
+        <button onClick={onClose} className="w-full mt-6 shrink-0 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white py-3.5 rounded-2xl font-bold transition-all duration-300">
+          Band Karein
+        </button>
+      </div>
     </div>
   );
 }

@@ -15,7 +15,7 @@ export default function AdminDashboardView({ loans, profiles, onDelete, onUpdate
   const [manageFundsLoanId, setManageFundsLoanId] = useState(null);
   const [historyLoan, setHistoryLoan] = useState(null); 
   const [showNewLoanForm, setShowNewLoanForm] = useState(false);
-  const [selectedUserProfile, setSelectedUserProfile] = useState(null); // Naya state
+  const [selectedUserProfile, setSelectedUserProfile] = useState(null);
   
   const [aiModal, setAiModal] = useState({ isOpen: false, loading: false, result: '', error: '' });
 
@@ -49,7 +49,7 @@ export default function AdminDashboardView({ loans, profiles, onDelete, onUpdate
     loan.userName.toLowerCase().includes(searchTerm.toLowerCase()) || loan.user_id.toLowerCase().includes(searchTerm.toLowerCase()) || loan.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
- const exportToCSV = async () => {
+const exportToCSV = () => {
     const headers = ['Loan ID', 'Date', 'User Name', 'User ID', 'Principal Amount', 'Interest Rate (%)', 'Tenure (Months)', 'Recovered Amount', 'Net Liability', 'Status'];
     const rows = filteredLoans.map(l => [
       l.id, new Date(Number(l.createdAt)).toLocaleDateString(), `"${l.userName}"`, l.user_id, l.amount, l.interestRate, l.tenure, l.recoveredAmount || 0,
@@ -58,40 +58,22 @@ export default function AdminDashboardView({ loans, profiles, onDelete, onUpdate
     
     const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     
-    // Mobile App (Android/iOS) ke liye check
-    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-      try {
-        // Blob ko base64 ya direct URL mein convert karke system browser mein bhejna
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const blobUrl = URL.createObjectURL(blob);
-
-        await Browser.open({ 
-          url: blobUrl, 
-          windowName: '_system' // Ye Chrome ko force karega download handle karne ke liye
-        });
-      } catch (error) {
-        console.error("Export failed", error);
-        showAlert("Error", "Mobile par export fail ho gaya.");
-      }
-    } else {
-      // Normal Browser (Web) ke liye purana logic
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob); 
-      link.download = `LeaderPro_Loans_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
-      link.style.visibility = 'hidden'; 
-      document.body.appendChild(link); 
-      link.click(); 
-      document.body.removeChild(link);
-    }
+    // Naya 100% Working Web/Mobile Download Code
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `LeaderPro_Loans_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`);
+    link.style.visibility = 'hidden'; 
+    document.body.appendChild(link); 
+    link.click(); 
+    document.body.removeChild(link);
   };
 
   const handleAIAnalysis = async () => {
     setAiModal({ isOpen: true, loading: true, result: '', error: '' });
-    
     const recoveryRate = totalDisbursed > 0 ? ((totalRecovery / totalDisbursed) * 100).toFixed(1) : 0;
     const interestRatio = totalDisbursed > 0 ? ((totalAccruedInterest / totalDisbursed) * 100).toFixed(1) : 0;
-
     const sysInst = `Role: Chief Risk Officer (CRO) for a micro-lending firm.
 Task: Analyze portfolio data and provide blunt, highly actionable risk mitigation strategies.
 Language: ${lang === 'en' ? 'Professional English' : 'Professional Hinglish (Hindi written in English alphabet)'}.
@@ -116,42 +98,15 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
         const response = await callGeminiAI(promptText, sysInst);
         setAiModal({ isOpen: true, loading: false, result: response, error: '' });
     } catch (e) {
-        setAiModal({ isOpen: true, loading: false, result: '', error: t('AI Analysis failed. Try again.', 'AI Vishleshan fail ho gaya. Kripya dubara koshish karein.') });
-    }
-  };
-
-  const handleFullUserDelete = async (userId) => {
-    const isConfirmed = window.confirm("WARNING: Kya aap sach mein is user ka astitva (Account, Profile, Loans) delete karna chahte hain? Ye process wapas nahi ho sakti.");
-    
-    if (!isConfirmed) return;
-
-    try {
-      // User ko wait karne ka message
-      showAlert("Info", "User delete ho raha hai, kripya pratiksha karein...");
-
-      // Supabase RPC function ko call karna
-      const { error } = await supabase.rpc('delete_user_account', {
-        user_id_to_delete: userId
-      });
-
-      if (error) throw error;
-
-      showAlert("Success", "User aur uska saara hisaab hamesha ke liye delete ho gaya.");
-      
-      // Page ko refresh kar dein taaki list update ho jaye
-      window.location.reload(); 
-
-    } catch (err) {
-      console.error("Delete Error:", err);
-      showAlert("Error", "User delete nahi ho paya. Permissions check karein.");
+        setAiModal({ isOpen: true, loading: false, result: '', error: t('AI Analysis failed. Please try again.', 'AI विश्लेषण विफल हो गया। कृपया दोबारा कोशिश करें।') });
     }
   };
 
   const handleCopyCode = () => {
     const textArea = document.createElement("textarea");
     textArea.value = adminId; document.body.appendChild(textArea); textArea.select();
-    try { document.execCommand('copy'); showAlert("Success", "Admin Code copy ho gaya!"); } 
-    catch (err) { showAlert("Error", "Copy fail."); }
+    try { document.execCommand('copy'); showAlert(t("Success", "सफलता"), t("Admin Code copied!", "एडमिन कोड कॉपी हो गया!")); } 
+    catch (err) { showAlert(t("Error", "त्रुटि"), t("Copy failed.", "कॉपी विफल।")); }
     document.body.removeChild(textArea);
   };
 
@@ -174,7 +129,7 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
     const repay = Number(repayAmount || 0);
 
     if (topup === 0 && repay === 0) {
-       showAlert("Warning", "Aapne koi rakam (amount) nahi daali hai.");
+       showAlert(t("Warning", "चेतावनी"), t("You have not entered any amount.", "आपने कोई रकम दर्ज नहीं की है।"));
        return;
     }
 
@@ -183,31 +138,21 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
     const newTotalAmount = currentAmount + topup;
     const newTotalRecovered = currentRecovered + repay;
 
-    const newTransaction = {
-       id: Date.now() + Math.random(),
-       date: Date.now(),
-       topup: topup,
-       repay: repay
-    };
-
+    const newTransaction = { id: Date.now() + Math.random(), date: Date.now(), topup: topup, repay: repay };
     const existingTransactions = Array.isArray(loan.transactions) ? loan.transactions : [];
     const updatedTransactions = [...existingTransactions, newTransaction];
 
-    onUpdate(loan.id, {
-      amount: newTotalAmount,
-      recoveredAmount: newTotalRecovered,
-      transactions: updatedTransactions
-    }, false); 
+    onUpdate(loan.id, { amount: newTotalAmount, recoveredAmount: newTotalRecovered, transactions: updatedTransactions }, false); 
     
-    showAlert("Success", `Transaction Record Save Ho Gaya!\n\nNaya Total Disbursed: ₹${newTotalAmount}\nNaya Total Recovery: ₹${newTotalRecovered}`);
+    showAlert(t("Success", "सफलता"), t(`Transaction Record Saved!\n\nNew Total Disbursed: ₹${newTotalAmount}\nNew Total Recovery: ₹${newTotalRecovered}`, `लेनदेन रिकॉर्ड सेव हो गया!\n\nनया कुल वितरण: ₹${newTotalAmount}\nनई कुल वसूली: ₹${newTotalRecovered}`));
     setManageFundsLoanId(null);
   };
 
   const handleCreateLoanSubmit = (e) => {
     e.preventDefault();
-    if (!newUserId) { showAlert("Warning", "User ID likhna zaroori hai!"); return; }
-    if (!newUserId.trim().match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)) { showAlert("Warning", "User ID galat format mein hai."); return; }
-    onCreate({ user_id: newUserId.trim(), admin_id: adminId, amount: Number(newAmount), recoveredAmount: 0, transactions: [], interestRate: Number(newRate), tenure: Number(newTenure), emi: 0, status: 'active', type: 'Personal Loan', createdAt: new Date(newDate).getTime(), adminNote: 'Admin dwara direct issue kiya gaya.' });
+    if (!newUserId) { showAlert(t("Warning", "चेतावनी"), t("User ID is required!", "यूजर आईडी दर्ज करना अनिवार्य है!")); return; }
+    if (!newUserId.trim().match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)) { showAlert(t("Warning", "चेतावनी"), t("User ID is in incorrect format.", "यूजर आईडी का फॉर्मेट गलत है।")); return; }
+    onCreate({ user_id: newUserId.trim(), admin_id: adminId, amount: Number(newAmount), recoveredAmount: 0, transactions: [], interestRate: Number(newRate), tenure: Number(newTenure), emi: 0, status: 'active', type: 'Personal Loan', createdAt: new Date(newDate).getTime(), adminNote: t('Issued directly by Admin.', 'एडमिन द्वारा सीधे जारी किया गया।') });
     setShowNewLoanForm(false); setNewUserId(''); 
   };
 
@@ -219,8 +164,8 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
         if (p.createdAt) {
           activities.push({
             id: `prof_${p.id}`,
-            title: 'Naya User Juda',
-            desc: `${p.full_name || 'Naya User'} ne account banaya.`,
+            title: t('New User Joined', 'नया यूजर जुड़ा'),
+            desc: t(`${p.full_name || 'New User'} created an account.`, `${p.full_name || 'नए यूजर'} ने अकाउंट बनाया।`),
             time: Number(p.createdAt),
             icon: <UserPlus className="h-4 w-4 text-blue-400" />,
             bg: 'bg-blue-500/10 border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]'
@@ -231,13 +176,13 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
 
     if (Array.isArray(loans)) {
       loans.forEach(loan => {
-        const userName = profiles?.find(p => p.user_id === loan.user_id)?.full_name || 'Unknown User';
+        const userName = profiles?.find(p => p.user_id === loan.user_id)?.full_name || t('Unknown User', 'अज्ञात यूजर');
 
         if (loan.createdAt) {
           activities.push({
             id: `loan_${loan.id}`,
-            title: 'Naya Loan Pass Hua',
-            desc: `₹${Number(loan.amount).toLocaleString('en-IN')} ka loan ${userName} ko diya gaya.`,
+            title: t('New Loan Approved', 'नया लोन पास हुआ'),
+            desc: t(`Loan of ₹${Number(loan.amount).toLocaleString('en-IN')} was given to ${userName}.`, `₹${Number(loan.amount).toLocaleString('en-IN')} का लोन ${userName} को दिया गया।`),
             time: Number(loan.createdAt),
             icon: <FileText className="h-4 w-4 text-cyan-400" />,
             bg: 'bg-cyan-500/10 border-cyan-500/30 shadow-[0_0_15px_rgba(34,211,238,0.1)]'
@@ -249,8 +194,8 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
             if (Number(tx.topup) > 0) {
               activities.push({
                 id: `topup_${loan.id}_${idx}`,
-                title: 'Top-up Diya Gaya',
-                desc: `₹${Number(tx.topup).toLocaleString('en-IN')} aur diye gaye ${userName} ko.`,
+                title: t('Top-up Given', 'टॉप-अप दिया गया'),
+                desc: t(`₹${Number(tx.topup).toLocaleString('en-IN')} more given to ${userName}.`, `₹${Number(tx.topup).toLocaleString('en-IN')} और दिए गए ${userName} को।`),
                 time: Number(tx.date),
                 icon: <Upload className="h-4 w-4 text-purple-400" />,
                 bg: 'bg-purple-500/10 border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.1)]'
@@ -259,8 +204,8 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
             if (Number(tx.repay) > 0) {
               activities.push({
                 id: `repay_${loan.id}_${idx}`,
-                title: 'Kist Wapas Aayi (Repay)',
-                desc: `₹${Number(tx.repay).toLocaleString('en-IN')} prapt hue ${userName} se.`,
+                title: t('Installment Received (Repay)', 'किस्त वापस आई (रिपे)'),
+                desc: t(`₹${Number(tx.repay).toLocaleString('en-IN')} received from ${userName}.`, `₹${Number(tx.repay).toLocaleString('en-IN')} प्राप्त हुए ${userName} से।`),
                 time: Number(tx.date),
                 icon: <Download className="h-4 w-4 text-emerald-400" />,
                 bg: 'bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]'
@@ -283,24 +228,24 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
   const timeAgo = (timestamp) => {
       const seconds = Math.floor((Date.now() - timestamp) / 1000);
       let interval = seconds / 86400;
-      if (interval > 1) return Math.floor(interval) + " din pehle";
+      if (interval > 1) return Math.floor(interval) + t(" days ago", " दिन पहले");
       interval = seconds / 3600;
-      if (interval > 1) return Math.floor(interval) + " ghante pehle";
+      if (interval > 1) return Math.floor(interval) + t(" hours ago", " घंटे पहले");
       interval = seconds / 60;
-      if (interval > 1) return Math.floor(interval) + " min pehle";
-      return "Abhi abhi";
+      if (interval > 1) return Math.floor(interval) + t(" min ago", " मिनट पहले");
+      return t("Just now", "अभी-अभी");
   };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 shrink-0">
         <div>
-          <h1 className="text-4xl font-bold text-white tracking-tight">Admin <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-400">Panel (Loans)</span></h1>
-          <p className="text-slate-400 mt-2 text-lg">Sabhi applications ko manage karein aur naye loan issue karein.</p>
+          <h1 className="text-4xl font-bold text-white tracking-tight">Admin <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-400">{t("Panel (Loans)", "पैनल (लोन)")}</span></h1>
+          <p className="text-slate-400 mt-2 text-lg">{t("Manage all applications and issue new loans.", "सभी एप्लिकेशन मैनेज करें और नए लोन जारी करें।")}</p>
         </div>
         <button onClick={() => setShowNewLoanForm(!showNewLoanForm)} className="flex items-center space-x-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white px-5 py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-green-500/30">
           {showNewLoanForm ? <X className="h-5 w-5" /> : <DollarSign className="h-5 w-5" />}
-          <span>{showNewLoanForm ? 'Band Karein' : 'Naya Loan Banayein (Direct)'}</span>
+          <span>{showNewLoanForm ? t('Close', 'बंद करें') : t('Create New Loan (Direct)', 'नया लोन बनाएं (डायरेक्ट)')}</span>
         </button>
       </header>
 
@@ -308,38 +253,38 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
         <div className="bg-[#111318] border border-green-500/30 p-8 rounded-3xl shadow-2xl mb-8 animate-in slide-in-from-top-4 shrink-0">
           <h2 className="text-xl font-bold text-white mb-6 flex items-center space-x-2">
             <Plus className="text-green-400 h-6 w-6" /> 
-            <span>User Ke Liye Naya Loan Banayein</span>
+            <span>{t("Create New Loan for User", "यूजर के लिए नया लोन बनाएं")}</span>
           </h2>
           <form onSubmit={handleCreateLoanSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Kiske liye? (User ID daalein)</label>
-                <input type="text" value={newUserId} onChange={(e)=>setNewUserId(e.target.value)} placeholder="Jaise: 550e8400-e29b-41d4-a716..." className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-green-500 outline-none font-mono text-sm" required />
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("For whom? (Enter User ID)", "किसके लिए? (यूजर आईडी डालें)")}</label>
+                <input type="text" value={newUserId} onChange={(e)=>setNewUserId(e.target.value)} placeholder={t("Example: 550e8400-e29b-41d4-a716...", "जैसे: 550e8400-e29b-41d4-a716...")} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-green-500 outline-none font-mono text-sm" required />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Tareekh aur Samay (Date & Time)</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("Date & Time", "तारीख और समय")}</label>
                 <input type="datetime-local" value={newDate} onChange={(e)=>setNewDate(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-green-500 outline-none" required />
               </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Principal Rashi (₹)</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("Principal Amount (₹)", "मूल राशि (₹)")}</label>
                 <input type="number" min="5000" step="1000" value={newAmount} onChange={(e)=>setNewAmount(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-green-500 outline-none" required />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Byaj Dar (Rate %)</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("Interest Rate (%)", "ब्याज दर (%)")}</label>
                 <input type="number" step="0.1" value={newRate} onChange={(e)=>setNewRate(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-green-500 outline-none" required />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Samay (Mahine)</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{t("Tenure (Months)", "समय (महीने)")}</label>
                 <input type="number" min="1" value={newTenure} onChange={(e)=>setNewTenure(e.target.value)} className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-green-500 outline-none" required />
               </div>
             </div>
 
             <div className="flex justify-end mt-4">
               <button type="submit" className="bg-green-500 hover:bg-green-400 text-black px-8 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-green-500/20">
-                Loan Active Karein
+                {t("Activate Loan", "लोन एक्टिव करें")}
               </button>
             </div>
           </form>
@@ -351,23 +296,23 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
          <div className="relative z-10">
             <div className="flex items-center space-x-2 mb-2">
                <Key className="h-5 w-5 text-cyan-400" />
-               <h3 className="text-white font-bold text-lg">Aapka Unique Admin Code</h3>
+               <h3 className="text-white font-bold text-lg">{t("Your Unique Admin Code", "आपका यूनिक एडमिन कोड")}</h3>
             </div>
-            <p className="text-sm text-indigo-200/70 mb-3">Naye users ko account banate samay ye code dena zaroori hai.</p>
+            <p className="text-sm text-indigo-200/70 mb-3">{t("New users must provide this code while creating an account.", "नए यूजर्स को अकाउंट बनाते समय यह कोड देना जरूरी है।")}</p>
             <div className="bg-black/50 border border-white/10 px-4 py-3 rounded-xl font-mono text-cyan-300 text-sm md:text-base break-all">
                {adminId}
             </div>
          </div>
          <button onClick={handleCopyCode} className="relative z-10 shrink-0 flex items-center justify-center space-x-2 bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-4 rounded-xl font-bold transition-all shadow-lg hover:shadow-indigo-500/50">
-            <Copy className="h-5 w-5" /> <span>Code Copy Karein</span>
+            <Copy className="h-5 w-5" /> <span>{t("Copy Code", "कोड कॉपी करें")}</span>
          </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 shrink-0">
-        <StatCard title={t("TOTAL USERS", "KUL USERS")} value={profiles.length} icon={<Users className="h-6 w-6 text-[#3b82f6]" />} iconBg="bg-[#3b82f6]/10" />
-        <StatCard title={t("DISBURSED PRINCIPAL", "DISBURSED PRINCIPAL")} value={`₹${totalDisbursed.toLocaleString('en-IN')}`} icon={<Activity className="h-6 w-6 text-[#f59e0b]" />} iconBg="bg-[#f59e0b]/10" />
-        <StatCard title={t("NET LIVE LIABILITY", "NET LIVE LIABILITY")} value={`₹${netLiability.toLocaleString('en-IN')}`} icon={<CreditCard className="h-6 w-6 text-[#f59e0b]" />} iconBg="bg-[#f59e0b]/10" />
-        <StatCard title={t("TOTAL RECOVERY", "TOTAL RECOVERY")} value={`₹${totalRecovery.toLocaleString('en-IN')}`} icon={<Check className="h-6 w-6 text-[#10b981]" />} iconBg="bg-[#10b981]/10" />
+        <StatCard title={t("TOTAL USERS", "कुल यूजर")} value={profiles.length} icon={<Users className="h-6 w-6 text-[#3b82f6]" />} iconBg="bg-[#3b82f6]/10" badgeText={t("AGENCY SHIELD", "एजेंसी शील्ड")} />
+        <StatCard title={t("DISBURSED PRINCIPAL", "वितरित मूलधन")} value={`₹${totalDisbursed.toLocaleString('en-IN')}`} icon={<Activity className="h-6 w-6 text-[#f59e0b]" />} iconBg="bg-[#f59e0b]/10" badgeText={t("AGENCY SHIELD", "एजेंसी शील्ड")} />
+        <StatCard title={t("NET LIVE LIABILITY", "नेट लाइव बकाया")} value={`₹${netLiability.toLocaleString('en-IN')}`} icon={<CreditCard className="h-6 w-6 text-[#f59e0b]" />} iconBg="bg-[#f59e0b]/10" badgeText={t("AGENCY SHIELD", "एजेंसी शील्ड")} />
+        <StatCard title={t("TOTAL RECOVERY", "कुल वसूली")} value={`₹${totalRecovery.toLocaleString('en-IN')}`} icon={<Check className="h-6 w-6 text-[#10b981]" />} iconBg="bg-[#10b981]/10" badgeText={t("AGENCY SHIELD", "एजेंसी शील्ड")} />
       </div>
 
       <AdminVisualAnalytics loans={loans} t={t} />
@@ -378,8 +323,8 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
                <Activity className="h-5 w-5 text-orange-400" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">Live Activity Feed</h2>
-              <p className="text-xs text-slate-400">Pichli saari gatividhiyan (Audit Trail)</p>
+              <h2 className="text-xl font-bold text-white">{t("Live Activity Feed", "लाइव गतिविधि फ़ीड")}</h2>
+              <p className="text-xs text-slate-400">{t("All recent activities (Audit Trail)", "पिछली सारी गतिविधियां (ऑडिट ट्रेल)")}</p>
             </div>
          </div>
 
@@ -389,14 +334,14 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
                   <div key={act.id} className={`shrink-0 w-72 p-5 rounded-2xl border ${act.bg} bg-black/40 backdrop-blur-sm transition-transform hover:-translate-y-1`}>
                      <div className="flex justify-between items-start mb-3">
                         <div className="p-2 rounded-lg bg-black/40 border border-white/5">{act.icon}</div>
-                        <span className="text-[10px] text-slate-400 font-mono bg-white/5 px-2 py-1 rounded-full border border-white/5">{timeAgo(act.time)}</span>
+                        <span className="text-[10px] text-slate-400 font-mono bg-white/5 px-2 py-1 rounded-full border border-white/5">{act.time}</span>
                      </div>
                      <h4 className="text-sm font-bold text-white mb-1">{act.title}</h4>
                      <p className="text-xs text-slate-300 leading-relaxed">{act.desc}</p>
                   </div>
                ))}
                {recentActivities.length === 0 && (
-                  <p className="text-slate-500 text-sm py-4 italic px-2">Abhi tak system mein koi naya update nahi hua hai.</p>
+                  <p className="text-slate-500 text-sm py-4 italic px-2">{t("No new updates in the system yet.", "अभी तक सिस्टम में कोई नया अपडेट नहीं हुआ है।")}</p>
                )}
             </div>
          </div>
@@ -404,13 +349,13 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
 
       <div className="bg-[#111318] rounded-3xl border border-white/[0.04] p-6 shadow-xl overflow-hidden flex flex-col shrink-0">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 shrink-0">
-          <h2 className="text-xl font-bold text-white">User Applications</h2>
+          <h2 className="text-xl font-bold text-white">{t("User Applications", "यूजर एप्लिकेशन")}</h2>
           <div className="flex flex-col sm:flex-row gap-3">
              <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <input 
                   type="text" 
-                  placeholder="Naam, User ID ya Loan ID..." 
+                  placeholder={t("Search Name, User ID or Loan ID...", "नाम, यूजर आईडी या लोन आईडी खोजें...")} 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full sm:w-64 pl-9 pr-4 py-2.5 bg-black/40 border border-white/[0.04] rounded-xl text-white text-sm focus:ring-1 focus:ring-cyan-500 outline-none transition-all"
@@ -418,27 +363,27 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
              </div>
              
              <button onClick={handleAIAnalysis} className="flex items-center justify-center space-x-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 px-4 py-2.5 rounded-xl transition-all text-sm font-bold">
-                <Sparkles className="h-4 w-4" /> <span>{t("AI Insights", "AI Analysis")}</span>
+                <Sparkles className="h-4 w-4" /> <span>{t("AI Insights", "AI विश्लेषण")}</span>
              </button>
 
              <button onClick={exportToCSV} className="flex items-center justify-center space-x-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-4 py-2.5 rounded-xl transition-all text-sm font-bold">
-                <File className="h-4 w-4" /> <span>Excel Download</span>
+                <File className="h-4 w-4" /> <span>{t("Excel Download", "एक्सेल डाउनलोड")}</span>
              </button>
           </div>
         </div>
         
         {filteredLoans.length === 0 ? (
-          <p className="text-slate-500 text-center py-10">Koi application nahi mili.</p>
+          <p className="text-slate-500 text-center py-10">{t("No applications found.", "कोई एप्लिकेशन नहीं मिली।")}</p>
         ) : (
           <div className="overflow-x-auto overflow-y-auto max-h-[60vh] pr-2 custom-scrollbar">
             <table className="w-full text-left border-collapse relative">
               <thead className="sticky top-0 z-20 bg-[#111318] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.5)]">
                 <tr className="border-b border-white/[0.04]">
-                  <th className="py-4 text-xs font-semibold text-slate-400 uppercase tracking-widest pl-4 bg-[#111318]">ID / Tareekh</th>
-                  <th className="py-4 text-xs font-semibold text-slate-400 uppercase tracking-widest bg-[#111318]">User Info (Naam & ID)</th>
-                  <th className="py-4 text-xs font-semibold text-slate-400 uppercase tracking-widest bg-[#111318]">Rashi / Recovery</th>
-                  <th className="py-4 text-xs font-semibold text-slate-400 uppercase tracking-widest bg-[#111318]">Status</th>
-                  <th className="py-4 text-xs font-semibold text-slate-400 uppercase tracking-widest text-right pr-4 bg-[#111318]">Action</th>
+                  <th className="py-4 text-xs font-semibold text-slate-400 uppercase tracking-widest pl-4 bg-[#111318]">{t("ID / Date", "आईडी / तारीख")}</th>
+                  <th className="py-4 text-xs font-semibold text-slate-400 uppercase tracking-widest bg-[#111318]">{t("User Info (Name & ID)", "यूजर इन्फो (नाम और आईडी)")}</th>
+                  <th className="py-4 text-xs font-semibold text-slate-400 uppercase tracking-widest bg-[#111318]">{t("Amount / Recovery", "राशि / वसूली")}</th>
+                  <th className="py-4 text-xs font-semibold text-slate-400 uppercase tracking-widest bg-[#111318]">{t("Status", "स्थिति")}</th>
+                  <th className="py-4 text-xs font-semibold text-slate-400 uppercase tracking-widest text-right pr-4 bg-[#111318]">{t("Action", "एक्शन")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.04]">
@@ -450,28 +395,23 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
                         <div className="text-sm text-slate-300">{new Date(Number(loan.createdAt)).toLocaleDateString()}</div>
                       </td>
                       <td className="py-4">
-  {/* Naam par click karne se modal khulega - cursor-pointer zaroori hai */}
-  <div 
-    className="font-bold text-white mb-1 cursor-pointer hover:text-cyan-400 transition-colors flex items-center group"
-    onClick={() => {
-      console.log("Opening profile for:", loan.userName); // Debugging ke liye
-      const profile = profiles.find(p => p.user_id === loan.user_id);
-      setSelectedUserProfile({ 
-        ...profile, 
-        loans: loans.filter(l => l.user_id === loan.user_id) 
-      });
-    }}
-  >
-    {loan.userName}
-    <Star className="h-3 w-3 ml-2 text-yellow-500 opacity-50 group-hover:opacity-100" fill="currentColor" />
-  </div>
-  <div className="font-mono text-[10px] text-cyan-400 bg-black/20 px-1.5 py-0.5 rounded inline-block">
-    {loan.user_id.substring(0,18)}...
-  </div>
-</td>
+                        <div 
+                          className="font-bold text-white mb-1 cursor-pointer hover:text-cyan-400 transition-colors flex items-center group"
+                          onClick={() => {
+                            const profile = profiles.find(p => p.user_id === loan.user_id);
+                            setSelectedUserProfile({ ...profile, loans: loans.filter(l => l.user_id === loan.user_id) });
+                          }}
+                        >
+                          {loan.userName}
+                          <Star className="h-3 w-3 ml-2 text-yellow-500 opacity-50 group-hover:opacity-100" fill="currentColor" />
+                        </div>
+                        <div className="font-mono text-[10px] text-cyan-400 bg-black/20 px-1.5 py-0.5 rounded inline-block">
+                          {loan.user_id.substring(0,18)}...
+                        </div>
+                      </td>
                       <td className="py-4">
-                         <div className="font-bold text-white">Disb: ₹{Number(loan.amount).toLocaleString('en-IN')}</div>
-                         <div className="text-xs text-emerald-400 font-semibold">Recv: ₹{Number(loan.recoveredAmount || 0).toLocaleString('en-IN')}</div>
+                         <div className="font-bold text-white">{t("Disb:", "वितरित:")} ₹{Number(loan.amount).toLocaleString('en-IN')}</div>
+                         <div className="text-xs text-emerald-400 font-semibold">{t("Recv:", "प्राप्त:")} ₹{Number(loan.recoveredAmount || 0).toLocaleString('en-IN')}</div>
                       </td>
                       <td className="py-4">
                         <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${
@@ -479,24 +419,24 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
                           loan.status === 'rejected' ? 'bg-red-500/10 text-red-400' : 
                           'bg-orange-500/10 text-orange-400'
                         }`}>
-                          {loan.status === 'active' ? 'Pass' : loan.status === 'rejected' ? 'Radh' : 'Pending'}
+                          {loan.status === 'active' ? t('Pass', 'पास') : loan.status === 'rejected' ? t('Rejected', 'रद्द') : t('Pending', 'पेंडिंग')}
                         </span>
                       </td>
                       <td className="py-4 text-right pr-4 space-x-2">
                         {loan.status === 'active' && (
                            <>
-                             <button onClick={() => setHistoryLoan(loan)} className="p-2 bg-blue-500/10 hover:bg-blue-500/30 border border-blue-500/20 text-blue-400 rounded-lg transition-colors" title="View Ledger History">
+                             <button onClick={() => setHistoryLoan(loan)} className="p-2 bg-blue-500/10 hover:bg-blue-500/30 border border-blue-500/20 text-blue-400 rounded-lg transition-colors" title={t("View Ledger History", "लेज़र हिस्ट्री देखें")}>
                                <Clock className="h-4 w-4" />
                              </button>
-                             <button onClick={() => handleFundsClick(loan)} className="p-2 bg-emerald-500/10 hover:bg-emerald-500/30 border border-emerald-500/20 text-emerald-400 rounded-lg transition-colors" title="Add Funds (Top-up / Repayment)">
+                             <button onClick={() => handleFundsClick(loan)} className="p-2 bg-emerald-500/10 hover:bg-emerald-500/30 border border-emerald-500/20 text-emerald-400 rounded-lg transition-colors" title={t("Add Funds (Top-up / Repayment)", "फंड जोड़ें (टॉप-अप / रीपेमेंट)")}>
                                <CreditCard className="h-4 w-4" />
                              </button>
                            </>
                         )}
-                        <button onClick={() => handleReviewClick(loan)} className="p-2 bg-indigo-500/10 hover:bg-indigo-500/30 border border-indigo-500/20 text-indigo-400 rounded-lg transition-colors" title="Edit Loan Terms & Review">
+                        <button onClick={() => handleReviewClick(loan)} className="p-2 bg-indigo-500/10 hover:bg-indigo-500/30 border border-indigo-500/20 text-indigo-400 rounded-lg transition-colors" title={t("Edit Loan Terms & Review", "लोन की शर्तें बदलें और रिव्यू करें")}>
                           <Edit className="h-4 w-4" />
                         </button>
-                        <button onClick={() => onDelete(loan.id)} className="p-2 bg-red-500/10 hover:bg-red-500/30 border border-red-500/20 text-red-400 rounded-lg transition-colors" title="Delete">
+                        <button onClick={() => onDelete(loan.id)} className="p-2 bg-red-500/10 hover:bg-red-500/30 border border-red-500/20 text-red-400 rounded-lg transition-colors" title={t("Delete", "हटाएं")}>
                           <Trash className="h-4 w-4" />
                         </button>
                       </td>
@@ -507,13 +447,13 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
                         <td colSpan="5" className="p-6">
                            <div className="flex flex-col md:flex-row gap-8">
                               <div className="flex-1 bg-black/40 p-5 rounded-2xl border border-emerald-500/20">
-                                 <h4 className="text-emerald-400 font-bold mb-4 flex items-center"><CreditCard className="h-4 w-4 mr-2"/> Loan Fund Ledger</h4>
+                                 <h4 className="text-emerald-400 font-bold mb-4 flex items-center"><CreditCard className="h-4 w-4 mr-2"/> {t("Loan Fund Ledger", "लोन फंड लेज़र")}</h4>
                                  <div className="space-y-3 text-sm">
-                                    <div className="flex justify-between"><span className="text-slate-400">Pehle Diye (Principal):</span> <span className="text-white font-bold">₹{Number(loan.amount).toLocaleString('en-IN')}</span></div>
-                                    <div className="flex justify-between"><span className="text-slate-400">Laga Byaj ({loan.interestRate}%):</span> <span className="text-amber-400 font-bold">+ ₹{calculateAccruedInterest(loan.amount, loan.interestRate, loan.createdAt).toLocaleString('en-IN')}</span></div>
-                                    <div className="flex justify-between"><span className="text-slate-400">Wapas Aaye (Recovered):</span> <span className="text-emerald-400 font-bold">- ₹{Number(loan.recoveredAmount || 0).toLocaleString('en-IN')}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-400">{t("Principal:", "मूलधन:")}</span> <span className="text-white font-bold">₹{Number(loan.amount).toLocaleString('en-IN')}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-400">{t(`Accrued Interest (${loan.interestRate}%):`, `लगा ब्याज (${loan.interestRate}%):`)}</span> <span className="text-amber-400 font-bold">+ ₹{calculateAccruedInterest(loan.amount, loan.interestRate, loan.createdAt).toLocaleString('en-IN')}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-400">{t("Recovered:", "वापस आए:")}</span> <span className="text-emerald-400 font-bold">- ₹{Number(loan.recoveredAmount || 0).toLocaleString('en-IN')}</span></div>
                                     <div className="pt-2 border-t border-white/10 flex justify-between">
-                                      <span className="text-emerald-300 font-semibold">Net Baki (Liability):</span> 
+                                      <span className="text-emerald-300 font-semibold">{t("Net Liability:", "नेट बाकी:")}</span> 
                                       <span className="text-emerald-400 font-bold text-lg">₹{(Number(loan.amount) + calculateAccruedInterest(loan.amount, loan.interestRate, loan.createdAt) - Number(loan.recoveredAmount || 0)).toLocaleString('en-IN')}</span>
                                     </div>
                                  </div>
@@ -522,17 +462,17 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
                               <div className="flex-1 space-y-4">
                                  <div className="flex gap-4">
                                     <div className="flex-1 space-y-2">
-                                       <label className="text-[10px] text-slate-400 uppercase tracking-widest font-bold flex items-center text-amber-400"><Upload className="h-3 w-3 mr-1"/> Aur Diye (Top-up)</label>
+                                       <label className="text-[10px] text-slate-400 uppercase tracking-widest font-bold flex items-center text-amber-400"><Upload className="h-3 w-3 mr-1"/> {t("Add Top-up", "टॉप-अप दें")}</label>
                                        <input type="number" placeholder="₹" value={topupAmount} onChange={(e) => setTopupAmount(e.target.value)} className="w-full bg-black/50 border border-amber-500/30 rounded-lg p-3 text-amber-400 focus:ring-1 focus:ring-amber-500 outline-none" />
                                     </div>
                                     <div className="flex-1 space-y-2">
-                                       <label className="text-[10px] text-slate-400 uppercase tracking-widest font-bold flex items-center text-emerald-400"><Download className="h-3 w-3 mr-1"/> Wapas Aaye (Repay)</label>
+                                       <label className="text-[10px] text-slate-400 uppercase tracking-widest font-bold flex items-center text-emerald-400"><Download className="h-3 w-3 mr-1"/> {t("Add Repayment", "वापस आए (रिपे)")}</label>
                                        <input type="number" placeholder="₹" value={repayAmount} onChange={(e) => setRepayAmount(e.target.value)} className="w-full bg-black/50 border border-emerald-500/30 rounded-lg p-3 text-emerald-400 focus:ring-1 focus:ring-emerald-500 outline-none" />
                                     </div>
                                  </div>
                                  <div className="flex gap-2 justify-end pt-2">
-                                    <button onClick={() => submitFunds(loan)} className="bg-emerald-500 hover:bg-emerald-400 text-black px-6 py-2 rounded-lg font-bold text-sm transition-colors">Ledger Update Karein</button>
-                                    <button onClick={() => setManageFundsLoanId(null)} className="bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-sm transition-colors">Cancel</button>
+                                    <button onClick={() => submitFunds(loan)} className="bg-emerald-500 hover:bg-emerald-400 text-black px-6 py-2 rounded-lg font-bold text-sm transition-colors">{t("Update Ledger", "लेज़र अपडेट करें")}</button>
+                                    <button onClick={() => setManageFundsLoanId(null)} className="bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-sm transition-colors">{t("Cancel", "रद्द करें")}</button>
                                  </div>
                               </div>
                            </div>
@@ -545,32 +485,32 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
                         <td colSpan="5" className="p-6">
                           <div className="bg-black/30 p-4 rounded-xl border border-white/5 mb-4 grid grid-cols-1 md:grid-cols-4 gap-4">
                              <div>
-                               <label className="text-[10px] text-slate-400 uppercase tracking-widest mb-1 block">Principal Rashi (₹)</label>
+                               <label className="text-[10px] text-slate-400 uppercase tracking-widest mb-1 block">{t("Principal Amount (₹)", "मूल राशि (₹)")}</label>
                                <input type="number" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none" />
                              </div>
                              <div>
-                               <label className="text-[10px] text-slate-400 uppercase tracking-widest mb-1 block">Byaj Dar (%)</label>
+                               <label className="text-[10px] text-slate-400 uppercase tracking-widest mb-1 block">{t("Interest Rate (%)", "ब्याज दर (%)")}</label>
                                <input type="number" step="0.1" value={editRate} onChange={(e) => setEditRate(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none" />
                              </div>
                              <div>
-                               <label className="text-[10px] text-slate-400 uppercase tracking-widest mb-1 block">Samay (Mahine)</label>
+                               <label className="text-[10px] text-slate-400 uppercase tracking-widest mb-1 block">{t("Tenure (Months)", "समय (महीने)")}</label>
                                <input type="number" value={editTenure} onChange={(e) => setEditTenure(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none" />
                              </div>
                              <div>
-                               <label className="text-[10px] text-slate-400 uppercase tracking-widest mb-1 block">Tareekh (Date)</label>
+                               <label className="text-[10px] text-slate-400 uppercase tracking-widest mb-1 block">{t("Date", "तारीख")}</label>
                                <input type="datetime-local" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none" />
                              </div>
                           </div>
 
                           <div className="flex flex-col md:flex-row gap-6">
                             <div className="flex-1">
-                              <label className="text-xs text-slate-400 uppercase tracking-widest mb-2 block">User ke liye Message / Shartein:</label>
+                              <label className="text-xs text-slate-400 uppercase tracking-widest mb-2 block">{t("Message/Terms for User:", "यूजर के लिए मैसेज/शर्तें:")}</label>
                               <textarea value={adminMessage} onChange={(e) => setAdminMessage(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none h-20 resize-none"></textarea>
                             </div>
                             <div className="flex flex-col space-y-2 justify-end min-w-[220px]">
-                               <button onClick={() => submitReview(loan.id, 'active')} className="flex items-center justify-center space-x-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/50 text-green-400 px-4 py-2 rounded-xl transition-all font-medium"><Check className="h-4 w-4" /> <span>Update & Pass Karein</span></button>
-                               <button onClick={() => submitReview(loan.id, 'rejected')} className="flex items-center justify-center space-x-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 text-red-400 px-4 py-2 rounded-xl transition-all font-medium"><X className="h-4 w-4" /> <span>Radh Karein</span></button>
-                               <button onClick={() => setEditingLoanId(null)} className="text-xs text-slate-500 hover:text-slate-300 mt-2">Band Karein</button>
+                               <button onClick={() => submitReview(loan.id, 'active')} className="flex items-center justify-center space-x-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/50 text-green-400 px-4 py-2 rounded-xl transition-all font-medium"><Check className="h-4 w-4" /> <span>{t("Update & Approve", "अपडेट और पास करें")}</span></button>
+                               <button onClick={() => submitReview(loan.id, 'rejected')} className="flex items-center justify-center space-x-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 text-red-400 px-4 py-2 rounded-xl transition-all font-medium"><X className="h-4 w-4" /> <span>{t("Reject", "रद्द करें")}</span></button>
+                               <button onClick={() => setEditingLoanId(null)} className="text-xs text-slate-500 hover:text-slate-300 mt-2">{t("Close", "बंद करें")}</button>
                             </div>
                           </div>
                         </td>
@@ -588,6 +528,7 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
         loan={historyLoan} 
         userName={historyLoan?.userName} 
         onClose={() => setHistoryLoan(null)} 
+        t={t}
       />
 
       <AIInsightsModal 
@@ -601,69 +542,11 @@ Rules: Strictly adhere to the requested format. NO markdown symbols like asteris
 
       {/* --- USER DETAIL MODAL --- */}
       {selectedUserProfile && (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-[#0f1115] border border-white/10 w-full max-w-xl rounded-[2.5rem] overflow-hidden shadow-2xl relative border-t-indigo-500/50 border-t-4">
-            
-            <button 
-              onClick={() => setSelectedUserProfile(null)} 
-              className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 rounded-full text-white z-20 transition-all"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <div className="p-8">
-               <div className="flex justify-between items-start mb-10">
-                  <div className="space-y-1">
-                    <h2 className="text-3xl font-black text-white tracking-tight">{selectedUserProfile.full_name || 'N/A'}</h2>
-                    <p className="text-cyan-400 font-mono text-[10px] tracking-widest uppercase opacity-70">User Profile Active</p>
-                  </div>
-                  
-                  {/* Trust Score Badge */}
-                  {(() => {
-                    const score = calculateTrustScore(selectedUserProfile.loans || []);
-                    const rating = getScoreRating(score);
-                    return (
-                      <div className={`text-right p-4 rounded-3xl border ${rating.border} ${rating.bg} backdrop-blur-md min-w-[120px]`}>
-                        <div className="flex items-center justify-end space-x-1 mb-1">
-                          <Star className={`h-4 w-4 ${rating.color}`} fill="currentColor" />
-                          <span className={`text-2xl font-black ${rating.color}`}>{score}</span>
-                        </div>
-                        <p className={`text-[8px] font-black uppercase tracking-widest ${rating.color}`}>{rating.label} Risk</p>
-                      </div>
-                    );
-                  })()}
-               </div>
-
-               <div className="grid grid-cols-2 gap-4 mb-8">
-                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                     <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-widest">Father's Name</p>
-                     <p className="text-white font-medium">{selectedUserProfile.father_name || 'N/A'}</p>
-                  </div>
-                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                     <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-widest">Mobile Number</p>
-                     <p className="text-white font-medium font-mono">{selectedUserProfile.phone || 'N/A'}</p>
-                  </div>
-                  <div className="col-span-2 bg-white/5 p-4 rounded-2xl border border-white/5">
-                     <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-widest">Full Address</p>
-                     <p className="text-white text-sm leading-relaxed">{selectedUserProfile.address || 'Address not available'}</p>
-                  </div>
-               </div>
-
-               <div className="pt-6 border-t border-white/10 flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">Account History</p>
-                    <p className="text-2xl font-black text-white">{(selectedUserProfile.loans || []).length} Loans</p>
-                  </div>
-                  <button 
-                    onClick={() => setSelectedUserProfile(null)}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-xl text-sm font-bold transition-all"
-                  >
-                    Vapis Jayein
-                  </button>
-               </div>
-            </div>
-          </div>
-        </div>
+        <UserDetailModal 
+          userProfile={selectedUserProfile} 
+          onClose={() => setSelectedUserProfile(null)} 
+          t={t} 
+        />
       )}
     </div>
   );
@@ -710,12 +593,12 @@ export function AdminVisualAnalytics({ loans, t }) {
        <div className="bg-[#111318] p-6 rounded-3xl border border-white/[0.04] shadow-xl hover:border-cyan-500/20 transition-all flex flex-col justify-between">
           <div>
               <h3 className="text-sm font-bold text-white mb-6 uppercase tracking-widest flex items-center">
-                 <BarChart className="h-4 w-4 mr-2 text-cyan-400" /> {t("Financial Health", "Aarthik Sthiti")}
+                 <BarChart className="h-4 w-4 mr-2 text-cyan-400" /> {t("Financial Health", "आर्थिक स्थिति")}
               </h3>
               <div className="space-y-4">
                  <div className="flex justify-between text-sm">
-                    <span className="text-emerald-400 font-bold">{t("Recovered", "Wapas Aaye")} ({recoveryPct}%)</span>
-                    <span className="text-amber-400 font-bold">{t("Net Liability", "Net Baki")} ({liabilityPct}%)</span>
+                    <span className="text-emerald-400 font-bold">{t("Recovered", "वापस आए")} ({recoveryPct}%)</span>
+                    <span className="text-amber-400 font-bold">{t("Net Liability", "नेट बाकी")} ({liabilityPct}%)</span>
                  </div>
                  <div className="w-full h-5 bg-slate-800/50 rounded-full overflow-hidden flex border border-white/5">
                     <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${recoveryPct}%` }}></div>
@@ -725,11 +608,11 @@ export function AdminVisualAnalytics({ loans, t }) {
           </div>
           <div className="pt-6 mt-6 border-t border-white/10 grid grid-cols-2 gap-4">
              <div className="bg-black/30 p-3 rounded-xl border border-white/5 text-center">
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t("Recovery", "Recovery")}</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t("Recovery", "रिकवरी")}</p>
                 <p className="text-lg font-bold text-emerald-400">₹{totalRecovery.toLocaleString('en-IN')}</p>
              </div>
              <div className="bg-black/30 p-3 rounded-xl border border-white/5 text-center">
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t("Liability", "Liability")}</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t("Liability", "लायबिलिटी")}</p>
                 <p className="text-lg font-bold text-amber-400">₹{(totalDisbursed + totalInterest - totalRecovery).toLocaleString('en-IN')}</p>
              </div>
           </div>
@@ -738,19 +621,19 @@ export function AdminVisualAnalytics({ loans, t }) {
        <div className="bg-[#111318] p-6 rounded-3xl border border-white/[0.04] shadow-xl hover:border-indigo-500/20 transition-all flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="w-full sm:w-1/2">
             <h3 className="text-sm font-bold text-white mb-6 uppercase tracking-widest flex items-center">
-               <PieChart className="h-4 w-4 mr-2 text-indigo-400" /> {t("Applications", "Applications")}
+               <PieChart className="h-4 w-4 mr-2 text-indigo-400" /> {t("Applications", "एप्लिकेशन")}
             </h3>
             <div className="space-y-4">
-               <div className="flex items-center justify-between bg-black/20 p-2 rounded-lg border border-white/5"><div className="flex items-center"><div className="w-3 h-3 rounded-full bg-emerald-500 mr-2 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div><span className="text-sm text-slate-300">{t("Active", "Pass (Active)")}</span></div><span className="font-bold text-white">{activeCount}</span></div>
-               <div className="flex items-center justify-between bg-black/20 p-2 rounded-lg border border-white/5"><div className="flex items-center"><div className="w-3 h-3 rounded-full bg-amber-500 mr-2 shadow-[0_0_8px_rgba(245,158,11,0.8)]"></div><span className="text-sm text-slate-300">{t("Pending", "Pending")}</span></div><span className="font-bold text-white">{pendingCount}</span></div>
-               <div className="flex items-center justify-between bg-black/20 p-2 rounded-lg border border-white/5"><div className="flex items-center"><div className="w-3 h-3 rounded-full bg-red-500 mr-2 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div><span className="text-sm text-slate-300">{t("Rejected", "Radh (Rejected)")}</span></div><span className="font-bold text-white">{rejectedCount}</span></div>
+               <div className="flex items-center justify-between bg-black/20 p-2 rounded-lg border border-white/5"><div className="flex items-center"><div className="w-3 h-3 rounded-full bg-emerald-500 mr-2 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div><span className="text-sm text-slate-300">{t("Active", "पास (Active)")}</span></div><span className="font-bold text-white">{activeCount}</span></div>
+               <div className="flex items-center justify-between bg-black/20 p-2 rounded-lg border border-white/5"><div className="flex items-center"><div className="w-3 h-3 rounded-full bg-amber-500 mr-2 shadow-[0_0_8px_rgba(245,158,11,0.8)]"></div><span className="text-sm text-slate-300">{t("Pending", "पेंडिंग")}</span></div><span className="font-bold text-white">{pendingCount}</span></div>
+               <div className="flex items-center justify-between bg-black/20 p-2 rounded-lg border border-white/5"><div className="flex items-center"><div className="w-3 h-3 rounded-full bg-red-500 mr-2 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div><span className="text-sm text-slate-300">{t("Rejected", "रद्द (Rejected)")}</span></div><span className="font-bold text-white">{rejectedCount}</span></div>
             </div>
           </div>
           <div className="flex justify-center shrink-0 relative">
              <div className="w-36 h-36 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.5)] border border-white/5" style={{ background: `conic-gradient(#10b981 ${activePct}%, #f59e0b ${activePct}% ${activePct + pendingPct}%, #ef4444 ${activePct + pendingPct}% 100%)` }}>
                 <div className="w-28 h-28 bg-[#111318] rounded-full flex items-center justify-center flex-col shadow-inner border border-white/5">
                    <span className="text-3xl font-black text-white">{totalCount}</span>
-                   <span className="text-[10px] text-slate-500 uppercase tracking-widest">{t("Total", "Total")}</span>
+                   <span className="text-[10px] text-slate-500 uppercase tracking-widest">{t("Total", "कुल")}</span>
                 </div>
              </div>
           </div>
@@ -759,7 +642,7 @@ export function AdminVisualAnalytics({ loans, t }) {
   );
 }
 
-export function LoanHistoryModal({ loan, onClose, userName }) {
+export function LoanHistoryModal({ loan, onClose, userName, t }) {
   if (!loan) return null;
   
   const accruedInterest = calculateAccruedInterest(loan.amount, loan.interestRate, loan.createdAt);
@@ -778,21 +661,21 @@ export function LoanHistoryModal({ loan, onClose, userName }) {
              <div className="p-2 bg-blue-500/20 rounded-xl">
                <Clock className="h-6 w-6 text-blue-400" />
              </div>
-             <h3 className="text-2xl font-bold text-white tracking-tight">Loan History & Ledger</h3>
+             <h3 className="text-2xl font-bold text-white tracking-tight">{t("Loan History & Ledger", "लोन हिस्ट्री और लेज़र")}</h3>
           </div>
           
           <div className="space-y-6">
              <div className="bg-black/40 p-4 rounded-2xl border border-white/[0.04]">
-                <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">Loan Account ID</p>
+                <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">{t("Loan Account ID", "लोन अकाउंट आईडी")}</p>
                 <p className="text-sm font-mono text-cyan-400">{loan.id}</p>
-                {userName && <p className="text-sm text-white mt-2 font-bold flex items-center"><User className="h-4 w-4 mr-2 text-slate-400"/> User: {userName}</p>}
+                {userName && <p className="text-sm text-white mt-2 font-bold flex items-center"><User className="h-4 w-4 mr-2 text-slate-400"/> {t("User:", "यूजर:")} {userName}</p>}
              </div>
              
              <div className="relative pl-6 border-l border-white/10 space-y-8 ml-2 py-2">
                 <div className="relative">
                    <div className="absolute -left-[31px] top-1 h-4 w-4 rounded-full bg-cyan-500 border-4 border-[#111318] shadow-[0_0_10px_rgba(6,182,212,0.5)]"></div>
                    <p className="text-xs text-slate-500 font-mono mb-1">{new Date(Number(loan.createdAt)).toLocaleString('en-IN')}</p>
-                   <p className="text-sm text-white font-bold">Loan Shuru Hua (Initial Disbursed)</p>
+                   <p className="text-sm text-white font-bold">{t("Loan Started (Initial Disbursed)", "लोन शुरू हुआ (पहला वितरण)")}</p>
                    <p className="text-xl font-black text-cyan-400 mt-1">+ ₹{initialPrincipal.toLocaleString('en-IN')}</p>
                 </div>
                 
@@ -803,14 +686,14 @@ export function LoanHistoryModal({ loan, onClose, userName }) {
                       
                       {tx.topup > 0 && (
                         <div className="mb-3">
-                          <p className="text-sm text-white font-bold">Aur Diye (Top-up)</p>
+                          <p className="text-sm text-white font-bold">{t("Top-up Given", "और दिए (टॉप-अप)")}</p>
                           <p className="text-xl font-black text-purple-400 mt-1">+ ₹{Number(tx.topup).toLocaleString('en-IN')}</p>
                         </div>
                       )}
                       
                       {tx.repay > 0 && (
                         <div>
-                          <p className="text-sm text-white font-bold">Wapas Aaye (Repayment)</p>
+                          <p className="text-sm text-white font-bold">{t("Repayment Received", "वापस आए (रीपेमेंट)")}</p>
                           <p className="text-xl font-black text-emerald-400 mt-1">- ₹{Number(tx.repay).toLocaleString('en-IN')}</p>
                         </div>
                       )}
@@ -819,19 +702,19 @@ export function LoanHistoryModal({ loan, onClose, userName }) {
 
                 <div className="relative mt-8">
                    <div className="absolute -left-[31px] top-1 h-4 w-4 rounded-full bg-amber-500 border-4 border-[#111318] shadow-[0_0_10px_rgba(245,158,11,0.5)]"></div>
-                   <p className="text-xs text-slate-500 font-mono mb-1">Aaj Tak Ka Hisaab</p>
-                   <p className="text-sm text-white font-bold">Kul Laga Byaj ({loan.interestRate}% P.A.)</p>
+                   <p className="text-xs text-slate-500 font-mono mb-1">{t("Till Date Calculation", "आज तक का हिसाब")}</p>
+                   <p className="text-sm text-white font-bold">{t(`Total Accrued Interest (${loan.interestRate}% P.A.)`, `कुल लगा ब्याज (${loan.interestRate}% P.A.)`)}</p>
                    <p className="text-xl font-black text-amber-400 mt-1">+ ₹{accruedInterest.toLocaleString('en-IN')}</p>
                 </div>
              </div>
              
              <div className="mt-8 pt-6 border-t border-white/10 flex justify-between items-center bg-white/[0.02] p-4 rounded-2xl sticky bottom-0 backdrop-blur-xl">
-                <span className="text-slate-300 font-bold uppercase tracking-wider text-sm">Net Baki Rakam</span>
+                <span className="text-slate-300 font-bold uppercase tracking-wider text-sm">{t("Net Liability", "नेट बाकी रकम")}</span>
                 <span className="text-3xl font-black text-white tracking-tight">₹{netBaki.toLocaleString('en-IN')}</span>
              </div>
 
              <button onClick={onClose} className="w-full mt-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white py-3.5 rounded-2xl font-bold transition-all duration-300 flex justify-center items-center">
-                <X className="h-4 w-4 mr-2" /> Vapis Jayein
+                <X className="h-4 w-4 mr-2" /> {t("Go Back", "वापस जाएं")}
              </button>
           </div>
        </div>
@@ -846,12 +729,10 @@ export function AIInsightsModal({ isOpen, onClose, loading, result, error, t }) 
     if (!result) return;
     
     if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-      // Mobile ke liye
       const blob = new Blob([result], { type: 'text/plain;charset=utf-8;' });
       const blobUrl = URL.createObjectURL(blob);
       await Browser.open({ url: blobUrl, windowName: '_system' });
     } else {
-      // Web ke liye
       const blob = new Blob([result], { type: 'text/plain;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -871,14 +752,14 @@ export function AIInsightsModal({ isOpen, onClose, loading, result, error, t }) 
                <div className="p-2 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-xl border border-cyan-500/30">
                  <Bot className="h-6 w-6 text-cyan-400" />
                </div>
-               <h3 className="text-2xl font-bold text-white tracking-tight">{t("AI Insights", "AI Vishleshan")}</h3>
+               <h3 className="text-2xl font-bold text-white tracking-tight">{t("AI Insights", "AI विश्लेषण")}</h3>
             </div>
             
             <div className="overflow-y-auto flex-1 pr-2 text-slate-300 text-sm leading-relaxed space-y-4 custom-scrollbar">
                {loading ? (
                    <div className="flex flex-col items-center justify-center py-10 space-y-4">
                        <Sparkles className="h-10 w-10 text-cyan-400 animate-pulse" />
-                       <p className="text-cyan-400/80 animate-pulse font-medium text-lg">{t("Analyzing data...", "Data ka vishleshan ho raha hai...")}</p>
+                       <p className="text-cyan-400/80 animate-pulse font-medium text-lg">{t("Analyzing data...", "डेटा का विश्लेषण हो रहा है...")}</p>
                    </div>
                ) : error ? (
                    <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl font-medium">{error}</div>
@@ -890,11 +771,11 @@ export function AIInsightsModal({ isOpen, onClose, loading, result, error, t }) 
             <div className="mt-6 flex flex-col sm:flex-row gap-3 shrink-0">
                {!loading && !error && result && (
                   <button onClick={handleDownload} className="flex-1 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 text-white py-3.5 rounded-2xl font-bold transition-all duration-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
-                     <Download className="h-4 w-4 mr-2" /> {t("Download Report", "Report Download")}
+                     <Download className="h-4 w-4 mr-2" /> {t("Download Report", "रिपोर्ट डाउनलोड")}
                   </button>
                )}
                <button onClick={onClose} className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white py-3.5 rounded-2xl font-bold transition-all duration-300">
-                  {t("Close", "Band Karein")}
+                  {t("Close", "बंद करें")}
                </button>
             </div>
          </div>
@@ -902,11 +783,9 @@ export function AIInsightsModal({ isOpen, onClose, loading, result, error, t }) 
   );
 }
 
-// --- NAYA: USER DETAIL MODAL WITH TRUST SCORE ---
-export function UserDetailModal({ userProfile, onClose }) {
+export function UserDetailModal({ userProfile, onClose, t }) {
   if (!userProfile) return null;
 
-  // Is user ke saare loans ka score nikalna
   const userLoans = userProfile.loans || [];
   const score = calculateTrustScore(userLoans);
   const rating = getScoreRating(score);
@@ -915,17 +794,15 @@ export function UserDetailModal({ userProfile, onClose }) {
     <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
       <div className="bg-[#0f1115] border border-white/10 w-full max-w-xl rounded-[2.5rem] overflow-hidden shadow-2xl relative border-t-indigo-500/50 border-t-4">
         
-        {/* Close Button */}
         <button onClick={onClose} className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 rounded-full text-white z-20 transition-all">
           <X className="h-5 w-5" />
         </button>
 
         <div className="p-8">
-           {/* Header & Trust Score */}
            <div className="flex justify-between items-start mb-10">
               <div className="space-y-1">
-                <h2 className="text-3xl font-black text-white tracking-tight">{userProfile.full_name || 'N/A'}</h2>
-                <p className="text-cyan-400 font-mono text-[10px] tracking-widest uppercase opacity-70">User ID: {userProfile.user_id?.substring(0,15)}...</p>
+                <h2 className="text-3xl font-black text-white tracking-tight">{userProfile.full_name || t('N/A', 'उपलब्ध नहीं')}</h2>
+                <p className="text-cyan-400 font-mono text-[10px] tracking-widest uppercase opacity-70">{t("User ID:", "यूजर आईडी:")} {userProfile.user_id?.substring(0,15)}...</p>
               </div>
               
               <div className={`text-right p-4 rounded-3xl border ${rating.border} ${rating.bg} backdrop-blur-md min-w-[120px]`}>
@@ -933,36 +810,34 @@ export function UserDetailModal({ userProfile, onClose }) {
                   <Star className={`h-4 w-4 ${rating.color}`} fill="currentColor" />
                   <span className={`text-2xl font-black ${rating.color}`}>{score}</span>
                 </div>
-                <p className={`text-[8px] font-black uppercase tracking-widest ${rating.color}`}>{rating.label} Risk</p>
+                <p className={`text-[8px] font-black uppercase tracking-widest ${rating.color}`}>{rating.label} {t("Risk", "जोखिम")}</p>
               </div>
            </div>
 
-           {/* Info Grid */}
            <div className="grid grid-cols-2 gap-4 mb-8">
               <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                 <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-widest">Father's Name</p>
-                 <p className="text-white font-medium">{userProfile.father_name || 'Not Provided'}</p>
+                 <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-widest">{t("Father's Name", "पिता का नाम")}</p>
+                 <p className="text-white font-medium">{userProfile.father_name || t('Not Provided', 'जानकारी नहीं')}</p>
               </div>
               <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                 <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-widest">Mobile Number</p>
-                 <p className="text-white font-medium font-mono">{userProfile.phone || 'N/A'}</p>
+                 <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-widest">{t("Mobile Number", "मोबाइल नंबर")}</p>
+                 <p className="text-white font-medium font-mono">{userProfile.phone || t('N/A', 'उपलब्ध नहीं')}</p>
               </div>
               <div className="col-span-2 bg-white/5 p-4 rounded-2xl border border-white/5">
-                 <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-widest">Full Address</p>
-                 <p className="text-white text-sm leading-relaxed">{userProfile.address || 'No address found in records.'}</p>
+                 <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-widest">{t("Full Address", "पूरा पता")}</p>
+                 <p className="text-white text-sm leading-relaxed">{userProfile.address || t('No address found in records.', 'रिकॉर्ड में कोई पता नहीं मिला।')}</p>
               </div>
            </div>
 
-           {/* Metrics Bar */}
            <div className="pt-6 border-t border-white/10 flex items-center justify-between">
               <div>
-                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">Total Active Loans</p>
+                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">{t("Total Active Loans", "कुल एक्टिव लोन")}</p>
                 <p className="text-2xl font-black text-white">{userLoans.length}</p>
               </div>
               <div className="flex flex-col items-end">
-                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">Member Status</p>
+                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">{t("Member Status", "सदस्य स्थिति")}</p>
                 <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${rating.bg} ${rating.color} border ${rating.border}`}>
-                  {rating.label} Member
+                  {rating.label} {t("Member", "सदस्य")}
                 </span>
               </div>
            </div>
