@@ -2,6 +2,8 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import {
   Bot, Star, CreditCard, ChevronRight, FileText, Plus, Send, Clock, User,
   Phone, Hash, MapPin, Activity, Upload, Download, PieChart, BarChart,
@@ -361,8 +363,7 @@ export function MyLoansView({ loans, profile }) {
 
   if (loans.length === 0) return (<div className="text-center py-20"><h2 className="text-2xl font-bold text-white">{t("No loans found", "कोई लोन नहीं है")}</h2></div>);
 
-  // PDF GENERATOR: Strictly in English to prevent PDF font corruption
-  const downloadLedger = async (loan) => {
+const downloadLedger = async (loan) => {
     try {
       const accruedInterest = calculateAccruedInterest(loan.amount, loan.interestRate, loan.createdAt);
       const netBaki = Number(loan.amount) + accruedInterest - Number(loan.recoveredAmount || 0);
@@ -370,7 +371,7 @@ export function MyLoansView({ loans, profile }) {
       // 1. Create a new PDF Document
       const doc = new jsPDF();
       
-      // 2. Add Header / Title (English Only)
+      // 2. Add Header / Title (Strictly in English)
       doc.setFontSize(18);
       doc.setTextColor(40, 40, 40);
       doc.text("LeaderPro - Loan Ledger", 14, 22);
@@ -381,7 +382,7 @@ export function MyLoansView({ loans, profile }) {
       doc.text(`Borrower: ${profile?.full_name || 'N/A'}`, 14, 38);
       doc.text(`Loan ID: ${loan.id}`, 14, 44);
 
-      // 3. Prepare the Table Data (English Only)
+      // 3. Prepare the Table Data (Strictly in English)
       const tableRows = [
         ["Disbursed Date", new Date(Number(loan.createdAt)).toLocaleDateString()],
         ["Principal Amount", `Rs. ${Number(loan.amount).toLocaleString('en-IN')}`],
@@ -406,15 +407,26 @@ export function MyLoansView({ loans, profile }) {
         styles: { fontSize: 10 }
       });
 
-      // 5. Download Logic for both Web and Mobile
-      if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-        const pdfDataUri = doc.output('datauristring');
-        await Browser.open({ url: pdfDataUri, windowName: '_system' });
+      // 5. 📱 MOBILE vs 💻 WEB DOWNLOAD LOGIC
+      if (Capacitor.isNativePlatform()) {
+        const fileName = `LeaderPro_Ledger_${loan.id.substring(0,8)}.pdf`;
+        // Convert PDF to Base64 string for mobile Filesystem saving
+        const pdfBase64 = doc.output('datauristring').split(',')[1]; 
+        
+        await Filesystem.writeFile({
+          path: fileName,
+          data: pdfBase64,
+          directory: Directory.Documents
+        });
+        
+        // Success alert stays bilingual for the UI
+        alert(t(`PDF saved in your phone's Documents folder as ${fileName}`, `PDF आपके फोन के Documents फोल्डर में ${fileName} नाम से सेव हो गई है!`));
       } else {
         doc.save(`LeaderPro_Ledger_${loan.id.substring(0,8)}.pdf`);
       }
     } catch (error) {
       console.error("PDF Error: ", error);
+      // Error alert stays bilingual for the UI
       alert(t("Error generating or downloading PDF. Please try again.", "PDF बनाने या डाउनलोड करने में एरर आई है। कृपया दोबारा प्रयास करें।"));
     }
   };

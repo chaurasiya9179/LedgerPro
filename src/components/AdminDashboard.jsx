@@ -1,5 +1,6 @@
 import React, { useState, useContext } from 'react';
-
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { 
   Search, Sparkles, File, FileText, Plus, DollarSign, Key, Copy, Users, Activity, 
   CreditCard, Check, BarChart,UserPlus, Clock, User, MessageSquare, Edit, Trash, 
@@ -49,25 +50,57 @@ export default function AdminDashboardView({ loans, profiles, onDelete, onUpdate
     loan.userName.toLowerCase().includes(searchTerm.toLowerCase()) || loan.user_id.toLowerCase().includes(searchTerm.toLowerCase()) || loan.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-const exportToCSV = () => {
-    const headers = ['Loan ID', 'Date', 'User Name', 'User ID', 'Principal Amount', 'Interest Rate (%)', 'Tenure (Months)', 'Recovered Amount', 'Net Liability', 'Status'];
+const exportToCSV = async () => {
+    // Headers strictly in English
+    const headers = [
+      'Loan ID', 'Date', 'User Name', 'User ID', 'Principal Amount', 
+      'Interest Rate (%)', 'Tenure (Months)', 'Recovered Amount', 
+      'Net Liability', 'Status'
+    ];
+    
     const rows = filteredLoans.map(l => [
-      l.id, new Date(Number(l.createdAt)).toLocaleDateString(), `"${l.userName}"`, l.user_id, l.amount, l.interestRate, l.tenure, l.recoveredAmount || 0,
-      (Number(l.amount) + calculateAccruedInterest(l.amount, l.interestRate, l.createdAt) - Number(l.recoveredAmount || 0)), l.status
+      l.id, 
+      new Date(Number(l.createdAt)).toLocaleDateString(), 
+      `"${l.userName}"`, // Wrapped in quotes to prevent issues with spaces in names
+      l.user_id, 
+      l.amount, 
+      l.interestRate, 
+      l.tenure, 
+      l.recoveredAmount || 0,
+      (Number(l.amount) + calculateAccruedInterest(l.amount, l.interestRate, l.createdAt) - Number(l.recoveredAmount || 0)), 
+      // Status strictly in English with capitalized first letter
+      l.status === 'active' ? 'Active' : l.status.charAt(0).toUpperCase() + l.status.slice(1)
     ]);
     
     const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     
-    // Naya 100% Working Web/Mobile Download Code
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `LeaderPro_Loans_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`);
-    link.style.visibility = 'hidden'; 
-    document.body.appendChild(link); 
-    link.click(); 
-    document.body.removeChild(link);
+    if (Capacitor.isNativePlatform()) {
+      // 📱 MOBILE APP DOWNLOAD LOGIC
+      try {
+        const fileName = `LeaderPro_Loans_${Date.now()}.csv`;
+        await Filesystem.writeFile({
+          path: fileName,
+          data: csvContent,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8
+        });
+        showAlert(t("Success", "सफलता"), t(`File saved in your phone's Documents folder as ${fileName}`, `फाइल आपके फोन के Documents फोल्डर में ${fileName} नाम से सेव हो गई है!`));
+      } catch (error) {
+        console.error("Mobile Save Error:", error);
+        showAlert(t("Error", "त्रुटि"), t("Mobile save failed. Please check storage permissions.", "मोबाइल में सेव नहीं हो पाया। कृपया स्टोरेज परमिशन चेक करें।"));
+      }
+    } else {
+      // 💻 LAPTOP / WEB BROWSER DOWNLOAD LOGIC
+      // '\uFEFF' ensures Excel reads the file with proper UTF-8 encoding
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `LeaderPro_Loans_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   const handleAIAnalysis = async () => {
