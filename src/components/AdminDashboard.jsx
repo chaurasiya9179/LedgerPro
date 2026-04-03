@@ -1,5 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { 
   Search, Sparkles, File, FileText, Plus, DollarSign, Key, Copy, Users, Activity, 
@@ -51,7 +52,6 @@ export default function AdminDashboardView({ loans, profiles, onDelete, onUpdate
   );
 
 const exportToCSV = async () => {
-    // Headers strictly in English
     const headers = [
       'Loan ID', 'Date', 'User Name', 'User ID', 'Principal Amount', 
       'Interest Rate (%)', 'Tenure (Months)', 'Recovered Amount', 
@@ -59,39 +59,41 @@ const exportToCSV = async () => {
     ];
     
     const rows = filteredLoans.map(l => [
-      l.id, 
-      new Date(Number(l.createdAt)).toLocaleDateString(), 
-      `"${l.userName}"`, // Wrapped in quotes to prevent issues with spaces in names
-      l.user_id, 
-      l.amount, 
-      l.interestRate, 
-      l.tenure, 
-      l.recoveredAmount || 0,
+      l.id, new Date(Number(l.createdAt)).toLocaleDateString(), `"${l.userName}"`, l.user_id, 
+      l.amount, l.interestRate, l.tenure, l.recoveredAmount || 0,
       (Number(l.amount) + calculateAccruedInterest(l.amount, l.interestRate, l.createdAt) - Number(l.recoveredAmount || 0)), 
-      // Status strictly in English with capitalized first letter
       l.status === 'active' ? 'Active' : l.status.charAt(0).toUpperCase() + l.status.slice(1)
     ]);
     
     const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     
     if (Capacitor.isNativePlatform()) {
-      // 📱 MOBILE APP DOWNLOAD LOGIC
+      // 📱 MOBILE APP DOWNLOAD LOGIC (USING SHARE)
       try {
         const fileName = `LeaderPro_Loans_${Date.now()}.csv`;
-        await Filesystem.writeFile({
+        
+        // Save to temporary Cache directory first
+        const writeResult = await Filesystem.writeFile({
           path: fileName,
           data: csvContent,
-          directory: Directory.Documents,
+          directory: Directory.Cache, 
           encoding: Encoding.UTF8
         });
-        showAlert(t("Success", "सफलता"), t(`File saved in your phone's Documents folder as ${fileName}`, `फाइल आपके फोन के Documents फोल्डर में ${fileName} नाम से सेव हो गई है!`));
+
+        // Open the native mobile Share/Save menu
+        await Share.share({
+          title: 'Export Loan Data',
+          text: 'Here is the exported Excel/CSV file from LeaderPro.',
+          url: writeResult.uri,
+          dialogTitle: 'Save or Share Excel File',
+        });
+
       } catch (error) {
-        console.error("Mobile Save Error:", error);
-        showAlert(t("Error", "त्रुटि"), t("Mobile save failed. Please check storage permissions.", "मोबाइल में सेव नहीं हो पाया। कृपया स्टोरेज परमिशन चेक करें।"));
+        console.error("Mobile Export Error:", error);
+        showAlert(t("Error", "त्रुटि"), t("Export failed. Please try again.", "एक्सपोर्ट विफल रहा। कृपया पुनः प्रयास करें।"));
       }
     } else {
-      // 💻 LAPTOP / WEB BROWSER DOWNLOAD LOGIC
-      // '\uFEFF' ensures Excel reads the file with proper UTF-8 encoding
+      // 💻 WEB BROWSER DOWNLOAD LOGIC
       const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);

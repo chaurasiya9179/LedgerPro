@@ -3,6 +3,7 @@ import React, { useState, useContext, useEffect, useRef } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import {
   Bot, Star, CreditCard, ChevronRight, FileText, Plus, Send, Clock, User,
@@ -368,10 +369,7 @@ const downloadLedger = async (loan) => {
       const accruedInterest = calculateAccruedInterest(loan.amount, loan.interestRate, loan.createdAt);
       const netBaki = Number(loan.amount) + accruedInterest - Number(loan.recoveredAmount || 0);
 
-      // 1. Create a new PDF Document
       const doc = new jsPDF();
-      
-      // 2. Add Header / Title (Strictly in English)
       doc.setFontSize(18);
       doc.setTextColor(40, 40, 40);
       doc.text("LeaderPro - Loan Ledger", 14, 22);
@@ -382,7 +380,6 @@ const downloadLedger = async (loan) => {
       doc.text(`Borrower: ${profile?.full_name || 'N/A'}`, 14, 38);
       doc.text(`Loan ID: ${loan.id}`, 14, 44);
 
-      // 3. Prepare the Table Data (Strictly in English)
       const tableRows = [
         ["Disbursed Date", new Date(Number(loan.createdAt)).toLocaleDateString()],
         ["Principal Amount", `Rs. ${Number(loan.amount).toLocaleString('en-IN')}`],
@@ -397,36 +394,40 @@ const downloadLedger = async (loan) => {
         tableRows.push(["Admin Note", loan.adminNote]);
       }
 
-      // 4. Generate the Table in the PDF
       autoTable(doc, {
         startY: 52,
         head: [["Field", "Details"]],
         body: tableRows,
         theme: 'grid',
-        headStyles: { fillColor: [8, 145, 178] }, // Cyan color matching your theme
+        headStyles: { fillColor: [8, 145, 178] }, 
         styles: { fontSize: 10 }
       });
 
-      // 5. 📱 MOBILE vs 💻 WEB DOWNLOAD LOGIC
+      // 📱 MOBILE vs 💻 WEB DOWNLOAD LOGIC
       if (Capacitor.isNativePlatform()) {
         const fileName = `LeaderPro_Ledger_${loan.id.substring(0,8)}.pdf`;
-        // Convert PDF to Base64 string for mobile Filesystem saving
         const pdfBase64 = doc.output('datauristring').split(',')[1]; 
         
-        await Filesystem.writeFile({
+        // Save to temporary Cache directory
+        const writeResult = await Filesystem.writeFile({
           path: fileName,
           data: pdfBase64,
-          directory: Directory.Documents
+          directory: Directory.Cache
         });
         
-        // Success alert stays bilingual for the UI
-        alert(t(`PDF saved in your phone's Documents folder as ${fileName}`, `PDF आपके फोन के Documents फोल्डर में ${fileName} नाम से सेव हो गई है!`));
+        // Open the native mobile Share/Save menu
+        await Share.share({
+          title: 'Loan Ledger PDF',
+          text: 'Here is your Loan Ledger from LeaderPro.',
+          url: writeResult.uri,
+          dialogTitle: 'Save or Share PDF Ledger',
+        });
+
       } else {
         doc.save(`LeaderPro_Ledger_${loan.id.substring(0,8)}.pdf`);
       }
     } catch (error) {
       console.error("PDF Error: ", error);
-      // Error alert stays bilingual for the UI
       alert(t("Error generating or downloading PDF. Please try again.", "PDF बनाने या डाउनलोड करने में एरर आई है। कृपया दोबारा प्रयास करें।"));
     }
   };
