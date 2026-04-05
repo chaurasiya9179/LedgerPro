@@ -369,56 +369,195 @@ const downloadLedger = async (loan) => {
       const accruedInterest = calculateAccruedInterest(loan.amount, loan.interestRate, loan.createdAt);
       const netBaki = Number(loan.amount) + accruedInterest - Number(loan.recoveredAmount || 0);
 
-      const doc = new jsPDF();
-      doc.setFontSize(18);
-      doc.setTextColor(40, 40, 40);
-      doc.text("LeaderPro - Loan Ledger", 14, 22);
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      // ==========================================
+      // 🎬 1. CINEMATIC TOP BAR
+      // ==========================================
+      // A sleek edge-to-edge cyan accent bar at the top
+      doc.setFillColor(6, 182, 212); // Cyan-500
+      doc.rect(0, 0, pageWidth, 4, 'F');
+
+      // ==========================================
+      // 🌟 2. MODERN BRANDING HEADER
+      // ==========================================
+      doc.setFontSize(28);
+      doc.setTextColor(15, 23, 42); // Very Dark Slate
+      doc.setFont("helvetica", "bold");
+      doc.text("LeaderPro", 14, 22);
+
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139); // Slate-500
+      doc.setFont("helvetica", "bold");
+      doc.text("NEXT-GEN FINANCIAL LEDGER", 14.5, 27);
+
+      // Statement Info (Right aligned)
+      doc.setFontSize(9);
+      doc.setTextColor(148, 163, 184); // Slate-400
+      doc.text("STATEMENT DATE", pageWidth - 14, 18, { align: "right" });
       
-      doc.setFontSize(11);
-      doc.setTextColor(100, 100, 100);
-      doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 32);
-      doc.text(`Borrower: ${profile?.full_name || 'N/A'}`, 14, 38);
-      doc.text(`Loan ID: ${loan.id}`, 14, 44);
+      doc.setFontSize(12);
+      doc.setTextColor(15, 23, 42);
+      doc.text(new Date().toLocaleDateString('en-IN'), pageWidth - 14, 23, { align: "right" });
 
-      const tableRows = [
-        ["Disbursed Date", new Date(Number(loan.createdAt)).toLocaleDateString()],
-        ["Principal Amount", `Rs. ${Number(loan.amount).toLocaleString('en-IN')}`],
-        ["Interest Rate", `${loan.interestRate}% P.A.`],
-        ["Accrued Interest", `Rs. ${accruedInterest.toLocaleString('en-IN')}`],
-        ["Recovered Amount", `Rs. ${Number(loan.recoveredAmount || 0).toLocaleString('en-IN')}`],
-        ["Net Liability", `Rs. ${netBaki.toLocaleString('en-IN')}`],
-        ["Status", loan.status === 'active' ? 'Active' : loan.status.charAt(0).toUpperCase() + loan.status.slice(1)]
-      ];
+      doc.setFontSize(9);
+      doc.setTextColor(148, 163, 184);
+      doc.text("LOAN REFERENCE ID", pageWidth - 14, 30, { align: "right" });
+      
+      doc.setFontSize(12);
+      doc.setTextColor(15, 23, 42);
+      doc.text(loan.id.substring(0, 8).toUpperCase(), pageWidth - 14, 35, { align: "right" });
 
-      if (loan.adminNote) {
-        tableRows.push(["Admin Note", loan.adminNote]);
-      }
+      // ==========================================
+      // 💳 3. PREMIUM INFO CARDS (SIDE BY SIDE)
+      // ==========================================
+      const cardY = 45;
+      
+      // CARD 1: Billed To (Light Grey, Rounded)
+      doc.setFillColor(248, 250, 252); // Slate-50
+      doc.roundedRect(14, cardY, pageWidth / 2 - 18, 35, 3, 3, 'F');
+      
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.setFont("helvetica", "bold");
+      doc.text("ISSUED TO:", 19, cardY + 7);
+      
+      doc.setFontSize(12);
+      doc.setTextColor(15, 23, 42);
+      doc.text(profile?.full_name || 'N/A', 19, cardY + 14);
+      
+      doc.setFontSize(9);
+      doc.setTextColor(71, 85, 105);
+      doc.setFont("helvetica", "normal");
+      const aadhar = profile?.aadhar_no ? `Aadhar: XXXX-XXXX-${profile.aadhar_no.slice(-4)}` : 'Aadhar: N/A';
+      doc.text(aadhar, 19, cardY + 21);
+      if (profile?.phone) doc.text(`Phone: ${profile.phone}`, 19, cardY + 26);
 
-      autoTable(doc, {
-        startY: 52,
-        head: [["Field", "Details"]],
-        body: tableRows,
-        theme: 'grid',
-        headStyles: { fillColor: [8, 145, 178] }, 
-        styles: { fontSize: 10 }
+
+      // CARD 2: Net Liability (Dark Mode / Cinematic)
+      doc.setFillColor(15, 23, 42); // Very Dark Slate
+      doc.roundedRect(pageWidth / 2 + 4, cardY, pageWidth / 2 - 18, 35, 3, 3, 'F');
+      
+      doc.setFontSize(9);
+      doc.setTextColor(148, 163, 184); // Slate-400
+      doc.setFont("helvetica", "bold");
+      doc.text("NET LIABILITY (BALANCE)", pageWidth / 2 + 9, cardY + 7);
+      
+      doc.setFontSize(22);
+      doc.setTextColor(255, 255, 255); // Pure White
+      doc.text(`Rs. ${netBaki.toLocaleString('en-IN')}`, pageWidth / 2 + 9, cardY + 18);
+
+      doc.setFontSize(9);
+      doc.setTextColor(6, 182, 212); // Cyan-500
+      doc.setFont("helvetica", "normal");
+      doc.text(`Status: ${loan.status.toUpperCase()}`, pageWidth / 2 + 9, cardY + 26);
+
+      // ==========================================
+      // 📋 4. MINIMALIST TRANSACTION HISTORY
+      // ==========================================
+      let currentY = cardY + 50;
+
+      doc.setFontSize(14);
+      doc.setTextColor(15, 23, 42);
+      doc.setFont("helvetica", "bold");
+      doc.text("Transaction History", 14, currentY);
+
+      // Prepare Transaction Data
+      const txRows = [];
+      const transactionsArray = Array.isArray(loan.transactions) ? loan.transactions : [];
+      const totalTopups = transactionsArray.reduce((sum, tx) => sum + Number(tx.topup || 0), 0);
+      const initialAmount = Number(loan.amount) - totalTopups;
+
+      // 1. Initial Disbursed
+      txRows.push([
+        new Date(Number(loan.createdAt)).toLocaleDateString('en-IN'),
+        "Initial Loan Disbursed",
+        `+ Rs. ${initialAmount.toLocaleString('en-IN')}`
+      ]);
+
+      // 2. All Transactions
+      transactionsArray.forEach(tx => {
+        const txDate = new Date(tx.date).toLocaleDateString('en-IN');
+        if (Number(tx.topup) > 0) {
+          txRows.push([txDate, "Additional Top-up Given", `+ Rs. ${Number(tx.topup).toLocaleString('en-IN')}`]);
+        }
+        if (Number(tx.repay) > 0) {
+          txRows.push([txDate, "Repayment Received", `- Rs. ${Number(tx.repay).toLocaleString('en-IN')}`]);
+        }
       });
 
-      // 📱 MOBILE vs 💻 WEB DOWNLOAD LOGIC
+      // 3. Accrued Interest Row
+      txRows.push([
+        new Date().toLocaleDateString('en-IN'),
+        `Accrued Interest (${loan.interestRate}% P.A.)`,
+        `+ Rs. ${accruedInterest.toLocaleString('en-IN')}`
+      ]);
+
+      autoTable(doc, {
+        startY: currentY + 6,
+        head: [["DATE", "DESCRIPTION", "AMOUNT"]],
+        body: txRows,
+        theme: 'plain', // Removes all borders for a sleek modern look
+        headStyles: { 
+          fillColor: [241, 245, 249], // Very light slate background for header
+          textColor: [100, 116, 139], // Slate-500 text
+          fontStyle: 'bold',
+          fontSize: 9
+        },
+        columnStyles: {
+          0: { cellWidth: 40, textColor: [71, 85, 105], fontStyle: 'normal' },
+          1: { cellWidth: 'auto', textColor: [15, 23, 42], fontStyle: 'bold' },
+          2: { cellWidth: 45, textColor: [15, 23, 42], halign: 'right', fontStyle: 'bold' }
+        },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+        styles: { fontSize: 10, cellPadding: 6 },
+        didDrawCell: (data) => {
+          // Add a subtle bottom border to every row for a clean list effect
+          if (data.row.section === 'body') {
+            doc.setDrawColor(226, 232, 240); // Slate-200
+            doc.setLineWidth(0.1);
+            doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+          }
+        }
+      });
+
+      // ==========================================
+      // 🏢 5. SLEEK FOOTER (ALL PAGES)
+      // ==========================================
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        
+        // Very subtle footer text
+        doc.setFontSize(8);
+        doc.setTextColor(148, 163, 184); 
+        doc.setFont("helvetica", "normal");
+        doc.text("This statement is computer-generated and requires no signature.", pageWidth / 2, pageHeight - 15, { align: "center" });
+        
+        doc.setFontSize(9);
+        doc.setTextColor(15, 23, 42); // Dark slate
+        doc.setFont("helvetica", "bold");
+        doc.text("LEADERPRO", pageWidth / 2, pageHeight - 10, { align: "center" });
+      }
+
+      // ==========================================
+      // 📱 MOBILE & WEB EXPORT LOGIC
+      // ==========================================
       if (Capacitor.isNativePlatform()) {
         const fileName = `LeaderPro_Ledger_${loan.id.substring(0,8)}.pdf`;
         const pdfBase64 = doc.output('datauristring').split(',')[1]; 
         
-        // Save to temporary Cache directory
         const writeResult = await Filesystem.writeFile({
           path: fileName,
           data: pdfBase64,
           directory: Directory.Cache
         });
         
-        // Open the native mobile Share/Save menu
         await Share.share({
           title: 'Loan Ledger PDF',
-          text: 'Here is your Loan Ledger from LeaderPro.',
+          text: 'Here is your Premium Loan Ledger from LeaderPro.',
           url: writeResult.uri,
           dialogTitle: 'Save or Share PDF Ledger',
         });
