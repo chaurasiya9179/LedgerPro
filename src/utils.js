@@ -27,39 +27,48 @@ export const calculateAccruedInterest = (principal, annualRate, createdAtTimesta
   return Math.round(interest);
 };
 
-export const callGeminiAI = async (promptText, systemInstruction) => {
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${GEMINI_API_KEY}`;
-    
-    const combinedPrompt = `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER REQUEST]\n${promptText}`;
+const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-    const payload = {
-      contents: [{ parts: [{ text: combinedPrompt }] }],
-      generationConfig: {
-         temperature: 0.3,
-         maxOutputTokens: 600,
-      }
-    };
+export async function callGeminiAI(promptText, systemInstruction = "") {
+  try {
+    // 🚨 यहाँ लेटेस्ट 'gemini-2.5-flash' मॉडल का इस्तेमाल किया गया है
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
+    
+    const finalPrompt = systemInstruction 
+      ? `System Instruction: ${systemInstruction}\n\nUser Request: ${promptText}`
+      : promptText;
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ text: finalPrompt }]
+          }
+        ]
+      })
     });
 
-    if (!response.ok) {
-        console.error("Gemini Response Error:", await response.text());
-        throw new Error("Gemini API Error");
-    }
-    
     const data = await response.json();
-    return data.candidates[0].content.parts[0].text;
-    
+
+    if (!response.ok) {
+      console.error("Gemini Response Error:", data);
+      throw new Error(data?.error?.message || "Gemini API Error");
+    }
+
+    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content.parts.length > 0) {
+      return data.candidates[0].content.parts[0].text;
+    } else {
+      throw new Error("No valid response from Gemini");
+    }
   } catch (error) {
     console.error("AI Setup Error:", error);
     throw error;
   }
-};
+}
 
 // --- NAYA: MODERN AUTO PDF GENERATOR ---
 

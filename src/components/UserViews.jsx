@@ -8,11 +8,11 @@ import {
   Bot, Star, CreditCard, ChevronRight, FileText, Plus, Send, Clock, User,
   Phone, Hash, MapPin, Activity, Upload, Download, PieChart, BarChart,
   MessageSquare, MessageCircle, Mail, Check, X, UserPlus, Edit, Trash,
-  Bell, Headset, Lock, AlertCircle, Percent, TrendingUp, ShieldCheck,DollarSign
+  Bell, Headset, Lock, AlertCircle, Percent, TrendingUp, ShieldCheck, DollarSign, Award, Gift, LineChart
 } from 'lucide-react';
 import { LanguageContext } from '../App';
-import { supabaseUrl, supabaseKey, calculateAccruedInterest, callGeminiAI, generateLoanPDF, calculateTrustScore, getScoreRating } from '../utils';
-import { StatCard, AIInsightsModal, LoanHistoryModal } from './AdminDashboard';
+import { supabaseUrl, supabaseKey, calculateAccruedInterest, callGeminiAI, calculateTrustScore, getScoreRating } from '../utils';
+import { AIInsightsModal, LoanHistoryModal } from './AdminDashboard';
 
 export function DashboardView({ loans, profile, onNavigate, session, showAlert, onSuccess }) {
   const { t, lang } = useContext(LanguageContext);
@@ -27,6 +27,27 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
   const score = calculateTrustScore(loans);
   const rating = getScoreRating(score);
 
+  // 🪙 LEADER COINS LOGIC
+  const leaderCoins = score > 300 ? (score - 300) * 12 : 0;
+
+  // 📈 WEALTH TRACKER LOGIC
+  const totalSavedInterest = loans.reduce((sum, l) => {
+    if (l.interestRate < 24) {
+      const savedRate = 24 - l.interestRate;
+      return sum + (Number(l.amount) * (savedRate / 100));
+    }
+    return sum;
+  }, 0);
+  
+  const projectedWealth = Math.round(totalSavedInterest * Math.pow(1.12, 5));
+
+  // 🚨 ULTRA-STRICT LOCK LOGIC 🚨
+  const hasBasicInfo = profile && profile.full_name && profile.phone;
+  const hasAllDocs = profile && profile.aadhar_front_url && profile.aadhar_back_url && profile.pan_url && profile.selfie_url;
+  const isVerified = profile && profile.kyc_status === 'Verified';
+
+  const isEligibleForLoan = hasBasicInfo && hasAllDocs && isVerified;
+
   const handleAIAnalysis = async () => {
     setAiModal({ isOpen: true, loading: true, result: '', error: '' });
     const summary = { totalBorrowed: totalDisbursed, totalPaidBack: totalRecovery, currentDebt: netLiability, totalInterestAccrued: totalAccruedInterest, activeLoansCount: activeLoans.length };
@@ -40,60 +61,120 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
     }
   };
 
+  // 🔥 PERSONALIZED NAME LOGIC 🔥
+  const firstName = profile?.full_name ? profile.full_name.split(' ')[0] : '';
+  const titlePrefixEn = firstName ? `${firstName}'s` : "Your";
+  const titlePrefixHi = firstName ? `${firstName} का` : "आपका";
+  const displayTitle = lang === 'en' ? titlePrefixEn : titlePrefixHi;
+
   return (
     <div className="relative space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-1000 pb-10">
-      {/* 🌟 BACKGROUND ORBS 🌟 */}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-600/10 blur-[120px] rounded-full pointer-events-none -z-10"></div>
       <div className="absolute top-[40%] left-[-10%] w-[400px] h-[400px] bg-purple-600/10 blur-[120px] rounded-full pointer-events-none -z-10"></div>
 
-      <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 pt-4">
+      <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6 pt-4">
         <div>
-          <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">{t("Your", "आपका")} <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400">{t("Dashboard", "डैशबोर्ड")}</span></h1>
+          <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight capitalize">
+            {displayTitle} <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 capitalize">{t("Dashboard", "डैशबोर्ड")}</span>
+          </h1>
           <p className="text-slate-400 mt-2 text-lg">{t("Welcome to your personal financial command center.", "आपके पर्सनल फाइनेंसियल सेंटर में आपका स्वागत है।")}</p>
         </div>
-        <button onClick={handleAIAnalysis} className="flex items-center justify-center space-x-2 bg-[#111318] border border-cyan-500/30 hover:bg-cyan-500/10 hover:border-cyan-400 text-cyan-400 px-6 py-3.5 rounded-2xl transition-all font-bold shadow-[0_0_20px_rgba(6,182,212,0.15)] group w-full md:w-auto">
-          <Bot className="h-5 w-5 group-hover:scale-110 transition-transform" /> <span>{t("AI Advisor", "AI सलाहकार")}</span>
-        </button>
-      </header>
-
-      {/* 1. PREMIUM PROFILE BANNER */}
-      {profile ? (
-        <div className="bg-gradient-to-br from-[#161922] to-[#0f1115] border border-white/5 p-6 md:p-8 rounded-[2.5rem] shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-6 relative overflow-hidden group hover:border-cyan-500/20 transition-all duration-500">
-          <div className="absolute right-0 top-0 w-64 h-64 bg-gradient-to-br from-cyan-500/10 to-transparent blur-[50px] pointer-events-none"></div>
+        
+        {/* 🔥 NEW PROFILE & AI BUTTONS 🔥 */}
+        <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
+          <button onClick={() => onNavigate('my_profile')} className="flex-1 md:flex-none flex items-center justify-center space-x-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white px-5 py-3.5 rounded-2xl transition-all font-bold shadow-lg group">
+            <User className="h-5 w-5 text-slate-400 group-hover:text-white transition-colors" /> 
+            <span>{t("Profile", "प्रोफाइल")}</span>
+          </button>
           
-          <div className="flex items-center space-x-6 relative z-10 w-full sm:w-auto">
-            <div className="w-20 h-20 bg-gradient-to-br from-cyan-500/20 to-blue-600/20 rounded-3xl flex items-center justify-center border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.2)] shrink-0 group-hover:scale-105 transition-transform duration-500">
-              <User className="h-10 w-10 text-cyan-400" />
-            </div>
-            <div>
-              <p className="text-[10px] text-cyan-400 uppercase tracking-widest font-bold mb-1">{t("Welcome Back", "वापसी पर स्वागत है")}</p>
-              <h2 className="text-3xl font-black text-white tracking-wide">{profile.full_name}</h2>
-              <div className="flex flex-wrap items-center gap-3 mt-2">
-                <span className="flex items-center text-xs text-slate-400 font-mono"><Phone className="h-3 w-3 mr-1" /> {profile.phone || t('N/A', 'उपलब्ध नहीं')}</span>
-                <span className={`px-2.5 py-1 rounded border text-[9px] font-bold uppercase tracking-widest flex items-center ${profile.kyc_status === 'Verified' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-                  {profile.kyc_status === 'Verified' ? <><ShieldCheck className="h-3 w-3 mr-1" /> {t('KYC Verified', 'KYC वेरीफाइड')}</> : <><Clock className="h-3 w-3 mr-1" /> {t('KYC Pending', 'KYC पेंडिंग')}</>}
-                </span>
-              </div>
-            </div>
-          </div>
-          <button onClick={() => onNavigate('my_profile')} className="w-full sm:w-auto bg-white/5 hover:bg-white/10 border border-white/10 text-white px-6 py-3.5 rounded-2xl transition-all text-sm font-bold flex items-center justify-center relative z-10 shrink-0">
-            <Edit className="h-4 w-4 mr-2 text-slate-400" /> {t("Manage Profile", "प्रोफाइल मैनेज करें")}
+          <button onClick={handleAIAnalysis} className="flex-1 md:flex-none flex items-center justify-center space-x-2 bg-[#111318] border border-cyan-500/30 hover:bg-cyan-500/10 hover:border-cyan-400 text-cyan-400 px-5 py-3.5 rounded-2xl transition-all font-bold shadow-[0_0_20px_rgba(6,182,212,0.15)] group">
+            <Bot className="h-5 w-5 group-hover:scale-110 transition-transform" /> 
+            <span>{t("AI Advisor", "AI सलाहकार")}</span>
           </button>
         </div>
-      ) : (
-        <div className="bg-gradient-to-br from-amber-950/40 to-black/40 border border-amber-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4 relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-64 h-64 bg-amber-500/10 blur-[50px] pointer-events-none"></div>
-          <div className="relative z-10">
-            <h2 className="text-2xl font-bold text-amber-400 flex items-center"><AlertCircle className="h-6 w-6 mr-3" /> {t("Profile Incomplete", "प्रोफाइल अधूरी है")}</h2>
-            <p className="text-sm text-amber-200/70 mt-2">{t("Please fill your profile details and complete KYC to unlock all features.", "कृपया अपनी जानकारी भरें और KYC पूरी करें।")}</p>
+      </header>
+
+      {/* 🌟 LEADER COINS GAMIFICATION CARD 🌟 */}
+      <div className="bg-gradient-to-br from-amber-900/40 via-[#1a1305] to-black border border-amber-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-[0_0_40px_rgba(245,158,11,0.15)] relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6 mb-8 group hover:border-amber-500/50 transition-all">
+        <div className="absolute -right-10 -top-10 w-40 h-40 bg-amber-500/20 blur-[50px] pointer-events-none group-hover:bg-amber-400/30 transition-colors duration-700"></div>
+        <div className="flex items-center space-x-5 relative z-10 w-full md:w-auto">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.4)] transform group-hover:scale-110 transition-transform duration-500 shrink-0">
+            <Award className="h-8 w-8 text-black" />
           </div>
-          <button onClick={() => onNavigate('my_profile')} className="w-full sm:w-auto bg-amber-500 hover:bg-amber-400 text-black px-8 py-3.5 rounded-2xl transition-all font-bold shadow-[0_0_20px_rgba(245,158,11,0.3)] relative z-10">
-            {t("Complete Setup", "सेटअप पूरा करें")}
+          <div>
+            <h2 className="text-xl font-bold text-white tracking-wide flex items-center">{t("Leader Rewards", "लीडर रिवॉर्ड्स")}</h2>
+            <p className="text-sm text-amber-200/70 mt-1">{t("Level:", "लेवल:")} <span className="font-bold text-amber-400 uppercase tracking-widest">{rating.label}</span></p>
+          </div>
+        </div>
+        <div className="bg-black/50 px-6 py-4 rounded-2xl border border-amber-500/20 flex flex-col md:flex-row items-start md:items-center justify-between w-full md:w-auto relative z-10 shadow-inner gap-4">
+          <div>
+            <p className="text-[10px] text-amber-500/80 font-bold uppercase tracking-widest mb-1">{t("Coin Balance", "कॉइन बैलेंस")}</p>
+            <p className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 flex items-center">
+              {leaderCoins} <span className="text-sm text-amber-500 ml-2">LC</span>
+            </p>
+          </div>
+          <div className="hidden md:block w-px h-10 bg-amber-500/20"></div>
+          <p className="text-[10px] text-amber-200/60 max-w-[120px] leading-tight font-bold uppercase tracking-widest">
+            {t("Use coins to lower your interest rate!", "लोन पर ब्याज कम करने के लिए कॉइन्स इस्तेमाल करें!")}
+          </p>
+        </div>
+      </div>
+
+      {/* 📈 SMART WEALTH TRACKER 📈 */}
+      <div className="bg-gradient-to-br from-emerald-950/40 to-[#05100a] border border-emerald-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-[0_0_40px_rgba(16,185,129,0.1)] relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-8 mb-8 group hover:border-emerald-500/50 transition-all">
+        <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-emerald-500/10 blur-[50px] pointer-events-none"></div>
+        <div className="flex-1 w-full relative z-10">
+          <div className="flex items-center space-x-3 mb-4">
+             <div className="p-2.5 bg-emerald-500/20 rounded-xl border border-emerald-500/30"><LineChart className="h-6 w-6 text-emerald-400" /></div>
+             <h2 className="text-2xl font-bold text-white tracking-wide">{t("Smart Wealth Tracker", "स्मार्ट वेल्थ ट्रैकर")}</h2>
+          </div>
+          <p className="text-sm text-slate-400 leading-relaxed mb-6">
+            {t("Don't just borrow, start building wealth! Here is how much you've saved by using Leader Coins to reduce your interest.", "सिर्फ कर्ज़ मत लीजिए, वेल्थ बनाना शुरू कीजिए! देखिए लीडर कॉइन्स का इस्तेमाल करके आपने ब्याज में कितने पैसे बचाए हैं।")}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+             <div className="bg-black/40 p-5 rounded-2xl border border-white/5 border-l-2 border-l-emerald-500">
+               <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t("Saved on Interest", "ब्याज पर बचाए")}</p>
+               <p className="text-2xl font-black text-emerald-400">₹{totalSavedInterest.toLocaleString('en-IN')}</p>
+             </div>
+             <div className="bg-black/40 p-5 rounded-2xl border border-white/5 border-l-2 border-l-cyan-500">
+               <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t("Value after 5 Years", "5 साल बाद की वैल्यू")}</p>
+               <p className="text-2xl font-black text-cyan-400">₹{projectedWealth.toLocaleString('en-IN')}</p>
+             </div>
+          </div>
+        </div>
+        <div className="w-full lg:w-1/3 bg-emerald-950/30 p-6 rounded-3xl border border-emerald-500/20 shadow-inner relative z-10 text-center lg:text-left">
+           <div className="flex justify-center lg:justify-start mb-3"><TrendingUp className="h-8 w-8 text-emerald-400" /></div>
+           <h4 className="text-white font-bold text-lg mb-2">{t("The Power of Compounding", "कंपाउंडिंग की ताकत")}</h4>
+           <p className="text-xs text-emerald-200/70 leading-relaxed">
+             {t("If you invest your saved ₹" + Math.floor(totalSavedInterest) + " in a High Dividend Yield portfolio or equity SIP, it could grow to ₹" + projectedWealth + " in just 5 years at an expected 12% return!", "अगर आप अपने बचाए हुए ₹" + Math.floor(totalSavedInterest) + " को किसी हाई-डिविडेंड यील्ड (High Dividend Yield) पोर्टफोलियो या SIP में लगाते हैं, तो 12% के अनुमानित रिटर्न के साथ यह 5 साल में ₹" + projectedWealth + " हो सकता है!")}
+           </p>
+        </div>
+      </div>
+
+      {/* 1. PROFILE STATUS BANNER */}
+      {!isEligibleForLoan && (
+        <div className="bg-gradient-to-br from-red-950/40 to-black/40 border border-red-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-lg mb-8 relative overflow-hidden">
+          <div className="absolute right-0 top-0 w-64 h-64 bg-red-500/10 blur-[50px] pointer-events-none"></div>
+          <div className="relative z-10">
+            <h2 className="text-2xl font-bold text-red-400 flex items-center gap-3">
+               <AlertCircle className="h-7 w-7" /> 
+               {!hasBasicInfo ? t("Profile Incomplete", "प्रोफाइल अधूरी है") : !hasAllDocs ? t("KYC Documents Missing", "KYC डाक्यूमेंट्स बाकी हैं") : t("Verification Pending", "वेरिफिकेशन पेंडिंग है")}
+            </h2>
+            <p className="text-sm text-red-200/70 mt-3 leading-relaxed">
+              {!hasBasicInfo 
+                ? t("Please fill your Name and Phone in profile to start.", "लोन शुरू करने के लिए कृपया अपना नाम और फोन नंबर भरें।") 
+                : !hasAllDocs 
+                ? t("You must upload all 4 KYC documents for approval.", "लोन के लिए आपको सभी 4 KYC डाक्यूमेंट्स अपलोड करने होंगे।") 
+                : t("Your documents are uploaded. Please wait for the Admin to verify your account.", "डाक्यूमेंट्स अपलोड हो गए हैं। कृपया एडमिन द्वारा वेरिफिकेशन का इंतज़ार करें।")}
+            </p>
+          </div>
+          <button onClick={() => onNavigate('my_profile')} className="mt-6 w-full sm:w-auto bg-red-500 hover:bg-red-400 text-black px-8 py-3.5 rounded-2xl transition-all font-bold shadow-[0_0_20px_rgba(239,68,68,0.3)] relative z-10">
+            {!hasBasicInfo || !hasAllDocs ? t("Complete KYC Now", "अभी KYC पूरी करें") : t("Check Profile Status", "प्रोफाइल स्टेटस देखें")}
           </button>
         </div>
       )}
 
-      {/* 2. DASHBOARD STATS (MINI HUD) */}
+      {/* 2. STATS (HUD) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         <div className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] hover:bg-white/[0.04] transition-all relative overflow-hidden group">
           <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><Activity className="w-24 h-24 text-blue-400" /></div>
@@ -105,36 +186,52 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
           <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2 flex items-center relative z-10"><Percent className="h-3 w-3 mr-1 text-amber-400" /> {t("Interest & Fees", "ब्याज और फीस")}</p>
           <p className="text-3xl font-black text-white relative z-10">₹{totalAccruedInterest.toLocaleString('en-IN')}</p>
         </div>
-        <div className="bg-gradient-to-br from-cyan-950/40 to-blue-900/40 border border-cyan-500/30 p-6 rounded-[2rem] shadow-[0_0_30px_rgba(6,182,212,0.15)] relative overflow-hidden group sm:col-span-1">
+        <div className="bg-gradient-to-br from-cyan-950/40 to-blue-900/40 border border-cyan-500/30 p-6 rounded-[2rem] shadow-[0_0_30px_rgba(6,182,212,0.15)] relative overflow-hidden group">
           <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-cyan-500/20 blur-[30px] rounded-full group-hover:bg-cyan-400/30 transition-all"></div>
           <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest mb-2 relative z-10">{t("Net Liability", "कुल बाकी रकम")}</p>
           <p className="text-4xl font-black text-cyan-300 relative z-10 tracking-tight">₹{netLiability.toLocaleString('en-IN')}</p>
         </div>
       </div>
 
-      {/* 3. REQUEST NEW LOAN BUTTON (CINEMATIC) */}
-      <div className="mt-8 relative group">
-        <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-cyan-600 rounded-[2.5rem] blur-xl opacity-30 group-hover:opacity-60 transition-opacity duration-500"></div>
+      {/* 3. REQUEST NEW LOAN BUTTON */}
+      <div className={`mt-8 relative group ${!isEligibleForLoan ? 'opacity-90' : ''}`}>
+        {isEligibleForLoan && <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-cyan-600 rounded-[2.5rem] blur-xl opacity-30 group-hover:opacity-60 transition-opacity duration-500"></div>}
+        
         <button
-          onClick={() => onNavigate('apply')}
-          className="w-full bg-gradient-to-r from-[#161922] to-[#0f1115] border border-white/10 p-8 rounded-[2.5rem] flex flex-col sm:flex-row items-center justify-between transition-transform duration-300 transform hover:-translate-y-1 relative overflow-hidden z-10"
+          onClick={() => {
+            if (isEligibleForLoan) {
+              onNavigate('apply');
+            } else {
+              let msg = !hasBasicInfo ? "Please complete your basic profile info." : !hasAllDocs ? "Please upload all 4 KYC documents." : "Wait for Admin to verify your KYC.";
+              let msgHi = !hasBasicInfo ? "कृपया प्रोफाइल में अपनी बेसिक जानकारी भरें।" : !hasAllDocs ? "कृपया सभी 4 KYC डाक्यूमेंट्स अपलोड करें।" : "कृपया एडमिन द्वारा KYC वेरिफिकेशन का इंतज़ार करें।";
+              showAlert(t("Access Denied", "पहुँच वर्जित"), t(msg, msgHi));
+              onNavigate('my_profile');
+            }
+          }}
+          className={`w-full bg-gradient-to-r from-[#161922] to-[#0f1115] border ${isEligibleForLoan ? 'border-white/10 hover:-translate-y-1 hover:border-cyan-500/30' : 'border-red-500/20 bg-red-950/10'} p-8 rounded-[2.5rem] flex flex-col sm:flex-row items-center justify-between transition-all duration-300 transform relative overflow-hidden z-10`}
         >
           <div className="flex items-center space-x-6 text-left">
-            <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-cyan-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-500">
-              <Plus className="h-8 w-8 text-white" />
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg transition-transform duration-500 ${isEligibleForLoan ? 'bg-gradient-to-br from-indigo-500 to-cyan-500 group-hover:scale-110' : 'bg-red-500/10 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]'}`}>
+              {isEligibleForLoan ? <Plus className="h-8 w-8 text-white" /> : <Lock className="h-7 w-7 text-red-400" />}
             </div>
+            
             <div>
-              <h2 className="text-2xl font-black text-white mb-1 tracking-wide">{t("Apply for a New Loan", "नया लोन अप्लाई करें")}</h2>
-              <p className="text-slate-400 text-sm">{t("100% digital process with instant admin approval.", "100% डिजिटल प्रोसेस, तुरंत अप्रूवल के साथ।")}</p>
+              <h2 className={`text-2xl font-black mb-1 tracking-wide ${isEligibleForLoan ? 'text-white' : 'text-red-400'}`}>
+                {isEligibleForLoan ? t("Apply for a New Loan", "नया लोन अप्लाई करें") : t("Loan Feature Locked", "लोन सुविधा लॉक है")}
+              </h2>
+              <p className={`text-sm ${isEligibleForLoan ? 'text-slate-400' : 'text-red-200/70 font-medium'}`}>
+                {isEligibleForLoan ? t("100% digital process with instant admin approval.", "100% डिजिटल प्रोसेस, तुरंत अप्रूवल के साथ।") : t("Verify KYC documents to unlock loan applications.", "लोन शुरू करने के लिए KYC वेरिफिकेशन जरूरी है।")}
+              </p>
             </div>
           </div>
-          <div className="mt-6 sm:mt-0 w-12 h-12 border border-white/10 rounded-full flex items-center justify-center group-hover:bg-white/10 transition-colors">
-            <ChevronRight className="h-6 w-6 text-slate-300 group-hover:text-white" />
+
+          <div className={`mt-6 sm:mt-0 w-12 h-12 border rounded-full flex items-center justify-center transition-colors ${isEligibleForLoan ? 'border-white/10 group-hover:bg-white/10' : 'border-red-500/30 bg-red-500/10'}`}>
+            {isEligibleForLoan ? <ChevronRight className="h-6 w-6 text-slate-300 group-hover:text-white" /> : <Lock className="h-5 w-5 text-red-400" />}
           </div>
         </button>
       </div>
 
-      {/* 4. COMPACT TRUST SCORE CARD */}
+      {/* TRUST SCORE COMPONENT */}
       <div className="bg-[#111318] border border-white/[0.04] p-6 md:p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden mt-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
           <div className="flex items-center space-x-5">
@@ -226,7 +323,8 @@ export function UserVisualAnalytics({ loans, t }) {
   );
 }
 
-export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showAlert }) {
+// 🌟 ORIGINATION VIEW (WITH COIN DISCOUNT FEATURE FIXED) 🌟
+export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showAlert, loans = [] }) {
   const { t } = useContext(LanguageContext);
   const [amount, setAmount] = useState(100000);
   const [endDate, setEndDate] = useState(() => {
@@ -234,7 +332,19 @@ export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showA
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [consent, setConsent] = useState(false);
-  const interestRate = 24;
+
+  // 🪙 COINS STATE LOGIC
+  const [applyDiscount, setApplyDiscount] = useState(false);
+  const score = calculateTrustScore(loans);
+  
+  const totalLeaderCoins = score > 300 ? (score - 300) * 12 : 0;
+  const hasEnoughCoins = totalLeaderCoins >= 500;
+  
+  // 🚨 जादू यहाँ है: अगर डिस्काउंट ON है, तो बैलेंस में से 500 माइनस कर दो 🚨
+  const displayedCoins = applyDiscount ? totalLeaderCoins - 500 : totalLeaderCoins;
+
+  const baseInterestRate = 24;
+  const finalInterestRate = applyDiscount ? (baseInterestRate - 2) : baseInterestRate;
 
   const calculateMonths = (end) => {
     const start = new Date(); const endD = new Date(end);
@@ -253,7 +363,7 @@ export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showA
       const response = await fetch(`${supabaseUrl}/rest/v1/loans`, {
         method: 'POST',
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ user_id: session.user.id, admin_id: linkedAdminId, amount: Number(amount), recoveredAmount: 0, transactions: [], tenure: Number(calculatedTenure), interestRate: interestRate, emi: 0, status: 'pending', type: 'Personal Loan', createdAt: Date.now(), adminNote: '' })
+        body: JSON.stringify({ user_id: session.user.id, admin_id: linkedAdminId, amount: Number(amount), recoveredAmount: 0, transactions: [], tenure: Number(calculatedTenure), interestRate: finalInterestRate, emi: 0, status: 'pending', type: 'Personal Loan', createdAt: Date.now(), adminNote: '' })
       });
       if (!response.ok) throw new Error("Fail");
       setIsSubmitting(false); if (onSuccess) onSuccess(); onNavigate('loans');
@@ -288,15 +398,54 @@ export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showA
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-indigo-950/40 to-black border border-indigo-500/20 p-6 md:p-8 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-inner">
+          {/* 🌟 GAMIFICATION DISCOUNT TOGGLE 🌟 */}
+          <div className={`p-6 md:p-8 rounded-3xl border transition-all duration-500 relative overflow-hidden ${applyDiscount ? 'bg-gradient-to-br from-amber-900/40 to-black border-amber-500/50 shadow-[0_0_30px_rgba(245,158,11,0.2)]' : 'bg-black/40 border-white/5 hover:border-amber-500/30'}`}>
+            {applyDiscount && <div className="absolute top-0 right-0 w-full h-full bg-amber-500/5 blur-[50px] pointer-events-none"></div>}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 relative z-10">
+              <div className="flex items-center space-x-4">
+                <div className={`p-3 rounded-2xl border transition-colors ${applyDiscount ? 'bg-amber-500/20 border-amber-500/50' : 'bg-white/5 border-white/10'}`}>
+                  <Gift className={`h-6 w-6 ${applyDiscount ? 'text-amber-400' : 'text-slate-500'}`} />
+                </div>
+                <div>
+                  <h3 className={`text-lg font-bold ${applyDiscount ? 'text-amber-400' : 'text-white'}`}>{t("Use Leader Coins", "लीडर कॉइन्स का इस्तेमाल करें")}</h3>
+                  <p className="text-sm text-slate-400 mt-1">
+                    {t("Spend 500 coins to get a 2% discount on your interest rate.", "500 कॉइन्स खर्च करें और ब्याज दर में 2% की छूट पाएं।")}
+                  </p>
+                  {/* ✨ LIVE COIN BALANCE UPDATE HERE ✨ */}
+                  <p className="text-[10px] text-amber-500/70 font-bold uppercase tracking-widest mt-2 transition-all">
+                    {t("Your Balance:", "आपका बैलेंस:")} <span className={applyDiscount ? 'text-white font-black' : ''}>{displayedCoins} LC</span>
+                  </p>
+                </div>
+              </div>
+              
+              <button 
+                type="button"
+                disabled={!hasEnoughCoins}
+                onClick={() => setApplyDiscount(!applyDiscount)}
+                className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${applyDiscount ? 'bg-amber-500' : 'bg-slate-700'}`}
+              >
+                <span className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${applyDiscount ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            {!hasEnoughCoins && (
+              <p className="text-xs text-red-400/80 mt-4 font-bold flex items-center relative z-10"><X className="h-3 w-3 mr-1" /> {t("You need at least 500 Leader Coins to unlock this offer.", "इस ऑफर के लिए कम से कम 500 लीडर कॉइन्स चाहिए।")}</p>
+            )}
+          </div>
+
+          <div className={`border p-6 md:p-8 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-inner transition-colors duration-500 ${applyDiscount ? 'bg-gradient-to-br from-amber-950/40 to-black border-amber-500/30' : 'bg-gradient-to-br from-indigo-950/40 to-black border-indigo-500/20'}`}>
             <div className="flex items-center space-x-4">
-              <div className="bg-indigo-500/10 p-3 rounded-xl border border-indigo-500/30"><Percent className="h-6 w-6 text-indigo-400" /></div>
+              <div className={`p-3 rounded-xl border transition-colors ${applyDiscount ? 'bg-amber-500/10 border-amber-500/30' : 'bg-indigo-500/10 border-indigo-500/30'}`}>
+                <Percent className={`h-6 w-6 ${applyDiscount ? 'text-amber-400' : 'text-indigo-400'}`} />
+              </div>
               <div>
-                <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">{t("Standard Annual Rate", "मानक वार्षिक दर")}</p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">{applyDiscount ? t("Discounted Annual Rate", "छूट वाली वार्षिक दर") : t("Standard Annual Rate", "मानक वार्षिक दर")}</p>
                 <p className="text-white text-sm">{t("Interest will be calculated on reducing balance.", "ब्याज बचे हुए मूलधन पर लगेगा।")}</p>
               </div>
             </div>
-            <div className="text-4xl font-black text-indigo-400">{interestRate}<span className="text-2xl text-indigo-200/50">%</span></div>
+            <div className="flex flex-col items-end">
+               {applyDiscount && <span className="text-sm text-slate-500 line-through mb-1">{baseInterestRate}%</span>}
+               <div className={`text-4xl font-black transition-colors ${applyDiscount ? 'text-amber-400' : 'text-indigo-400'}`}>{finalInterestRate}<span className={`text-2xl ${applyDiscount ? 'text-amber-200/50' : 'text-indigo-200/50'}`}>%</span></div>
+            </div>
           </div>
 
           <label className="flex items-start space-x-4 cursor-pointer bg-white/[0.01] hover:bg-white/[0.02] border border-white/5 p-5 rounded-2xl transition-colors">
@@ -326,7 +475,7 @@ export function MyLoansView({ loans, profile }) {
 
   if (loans.length === 0) return (<div className="flex flex-col items-center justify-center py-32 opacity-50"><FileText className="h-20 w-20 text-slate-500 mb-6" /><h2 className="text-2xl font-bold text-white">{t("No loans found", "कोई लोन नहीं है")}</h2></div>);
 
-  const downloadLedger = async (loan) => { /* ... PDF Logic remains identical ... */ 
+  const downloadLedger = async (loan) => { 
       try {
         const accruedInterest = calculateAccruedInterest(loan.amount, loan.interestRate, loan.createdAt);
         const netBaki = Number(loan.amount) + accruedInterest - Number(loan.recoveredAmount || 0);
@@ -390,7 +539,6 @@ export function MyLoansView({ loans, profile }) {
               </div>
               <p className="text-sm text-slate-500 mb-8 font-mono flex items-center"><Hash className="h-4 w-4 mr-1 text-slate-600"/> ID: {loan.id.substring(0, 12).toUpperCase()} <span className="mx-3 border-l border-white/10 h-4"></span> <Clock className="h-4 w-4 mr-1 text-slate-600"/> {t("Started:", "शुरू हुआ:")} {new Date(Number(loan.createdAt)).toLocaleDateString('en-IN')}</p>
               
-              {/* MINI HUD FOR LOAN CARD */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-black/30 p-5 rounded-2xl border border-white/[0.04] group-hover:border-white/10 transition-colors"><p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">{t("Principal", "मूलधन")}</p><p className="text-xl font-bold text-white">₹{Number(loan.amount).toLocaleString('en-IN')}</p></div>
                 <div className="bg-black/30 p-5 rounded-2xl border border-white/[0.04] group-hover:border-white/10 transition-colors"><p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">{t("Interest", "लगा ब्याज")} ({loan.interestRate}%)</p><p className="text-xl font-bold text-amber-400">+ ₹{accruedInterest.toLocaleString('en-IN')}</p></div>
