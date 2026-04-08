@@ -22,7 +22,7 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
   const [dailyData, setDailyData] = useState(null);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-  // 🎯 QUIZ PLAYED & BONUS COIN LOGIC (FIXED)
+  // 🎯 QUIZ PLAYED & BONUS COIN LOGIC
   const todayDate = new Date().toDateString(); 
   const quizStorageKey = `quiz_played_${session.user.id}`;
   const dataStorageKey = `daily_bundle_data`;
@@ -155,10 +155,9 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
       </header>
 
       {/* 🌟 COMPACT STATUS BAR (TRUST SCORE + COINS) 🌟 */}
-      <div className="bg-[#111318]/80 backdrop-blur-md border border-white/10 px-5 py-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg mb-8 relative overflow-hidden">
+      <div className="bg-[#111318]/80 backdrop-blur-md border border-white/10 px-5 py-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg mb-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-[30px] pointer-events-none"></div>
         
-        {/* Trust Score Small */}
         <div className="flex items-center space-x-4">
           <div className={`p-2.5 rounded-xl border ${rating.bg} ${rating.border}`}>
             <Star className={`h-5 w-5 ${rating.color}`} fill="currentColor" />
@@ -175,7 +174,6 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
 
         <div className="hidden sm:block w-px h-10 bg-white/5"></div>
 
-        {/* Leader Coins Small */}
         <div className="flex items-center space-x-4 border-t border-white/5 sm:border-0 pt-3 sm:pt-0">
           <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-600/20 border border-amber-500/30">
             <Award className="h-5 w-5 text-amber-400" />
@@ -191,7 +189,7 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
       </div>
 
       {/* CLICKABLE STATS HUD */}
-      <div onClick={() => onNavigate('loans')} className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8 cursor-pointer hover:-translate-y-1 transition-all duration-300 group/mainstats">
+      <div onClick={() => onNavigate('loans')} className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-2 cursor-pointer hover:-translate-y-1 transition-all duration-300 group/mainstats">
          <div className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] group-hover/mainstats:bg-white/[0.04] transition-all relative overflow-hidden">
             <Activity className="absolute -right-4 -top-4 w-24 h-24 text-blue-400 opacity-5" />
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">{t("Total Borrowed", "कुल लिया गया")}</p>
@@ -211,8 +209,11 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
          </div>
       </div>
 
+      {/* 📊 VISUAL ANALYTICS (MOVED TO TOP) 📊 */}
+      <UserVisualAnalytics loans={loans} t={t} />
+
       {/* 🕉️ AUTOMATED DAILY WISDOM & LEARN SECTION 🕉️ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 relative z-10">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 mt-6 relative z-10">
         <div className="bg-gradient-to-br from-orange-950/50 via-[#111318] to-[#111318] border border-orange-500/20 p-6 md:p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group min-h-[220px]">
            {isLoadingDaily && <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20 backdrop-blur-sm"><Activity className="animate-spin text-orange-400" /></div>}
            <div className="flex items-center space-x-3 mb-6">
@@ -350,9 +351,6 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
           </div>
         </button>
       </div>
-
-      {/* Analytics Component */}
-      <UserVisualAnalytics loans={loans} t={t} />
 
       <AIInsightsModal isOpen={aiModal.isOpen} onClose={() => setAiModal({ ...aiModal, isOpen: false })} loading={aiModal.loading} result={aiModal.result} error={aiModal.error} t={t} />
     </div>
