@@ -8,7 +8,7 @@ import {
   Bot, Star, CreditCard, ChevronRight, FileText, Plus, Send, Clock, User,
   Phone, Hash, MapPin, Activity, Upload, Download, PieChart, BarChart,
   MessageSquare, MessageCircle, Mail, Check, X, UserPlus, Edit, Trash,
-  Bell, Headset, Lock, AlertCircle, Percent, TrendingUp, ShieldCheck, DollarSign, Award, Gift, LineChart
+  Bell, Headset, Lock, AlertCircle, Percent, TrendingUp, ShieldCheck, DollarSign, Award, Gift, LineChart,BookOpen, Lightbulb
 } from 'lucide-react';
 import { LanguageContext } from '../App';
 import { supabaseUrl, supabaseKey, calculateAccruedInterest, callGeminiAI, calculateTrustScore, getScoreRating } from '../utils';
@@ -16,19 +16,80 @@ import { AIInsightsModal, LoanHistoryModal } from './AdminDashboard';
 
 export function DashboardView({ loans, profile, onNavigate, session, showAlert, onSuccess }) {
   const { t, lang } = useContext(LanguageContext);
+  const [aiModal, setAiModal] = useState({ isOpen: false, loading: false, result: '', error: '' });
+  
+  // 🕉️ AUTOMATED DAILY CONTENT STATE
+  const [dailyData, setDailyData] = useState(null);
+  const [isLoadingDaily, setIsLoadingDaily] = useState(false);
+
+  // 🎯 QUIZ PLAYED & BONUS COIN LOGIC (FIXED)
+  const todayDate = new Date().toDateString(); 
+  const quizStorageKey = `quiz_played_${session.user.id}`;
+  const dataStorageKey = `daily_bundle_data`;
+  const bonusCoinsKey = `bonus_coins_${session.user.id}`;
+
+  const [hasPlayedToday, setHasPlayedToday] = useState(localStorage.getItem(quizStorageKey) === todayDate);
+  const [quizStatus, setQuizStatus] = useState(hasPlayedToday ? 'success' : null);
+  const [bonusCoins, setBonusCoins] = useState(Number(localStorage.getItem(bonusCoinsKey)) || 0);
+
+  // 🤖 FETCH DAILY WISDOM & QUIZ FROM AI
+  useEffect(() => {
+    const loadDailyContent = async () => {
+      const savedBundle = JSON.parse(localStorage.getItem(dataStorageKey));
+      
+      if (savedBundle && savedBundle.date === todayDate) {
+        setDailyData(savedBundle.content);
+        return;
+      }
+
+      setIsLoadingDaily(true);
+      const prompt = `Generate a daily finance bundle in JSON format:
+      1. shloka: A powerful Sanskrit Shloka about Karma or Discipline.
+      2. shloka_hi: Hindi translation of that shloka.
+      3. wisdom_text: A 2-line motivation based on the shloka.
+      4. quiz_q: A tricky finance question about loans, interest, or savings.
+      5. opt_a: Wrong option.
+      6. opt_b: Correct option.
+      Return ONLY valid JSON.`;
+
+      try {
+        const response = await callGeminiAI(prompt, "You are a wise financial guru.");
+        const cleanJson = response.replace(/```json|```/g, "").trim();
+        const parsed = JSON.parse(cleanJson);
+        
+        const newBundle = { date: todayDate, content: parsed };
+        localStorage.setItem(dataStorageKey, JSON.stringify(newBundle));
+        setDailyData(parsed);
+      } catch (err) {
+        console.error("AI Daily Fetch Error:", err);
+        setDailyData({
+          shloka: "कर्मण्येवाधिकारस्ते मा फलेषु कदाचन।",
+          shloka_hi: "कर्म पर आपका अधिकार है, फल पर नहीं।",
+          wisdom_text: "फोकस अपने काम पर रखो, पैसा अपने आप पीछे आएगा।",
+          quiz_q: "ब्याज बचाने का सबसे अच्छा तरीका क्या है?",
+          opt_a: "देर से पेमेंट करना",
+          opt_b: "समय से पहले मूलधन चुकाना"
+        });
+      } finally {
+        setIsLoadingDaily(false);
+      }
+    };
+
+    loadDailyContent();
+  }, [todayDate, session.user.id]);
+
+  // 📊 BASIC STATS LOGIC
   const activeLoans = loans.filter(l => l.status === 'active');
   const totalDisbursed = activeLoans.reduce((sum, l) => sum + Number(l.amount || 0), 0);
   const totalRecovery = activeLoans.reduce((sum, l) => sum + Number(l.recoveredAmount || 0), 0);
   const totalAccruedInterest = activeLoans.reduce((sum, l) => sum + calculateAccruedInterest(l.amount, l.interestRate, l.createdAt), 0);
   const netLiability = totalDisbursed + totalAccruedInterest - totalRecovery;
 
-  const [aiModal, setAiModal] = useState({ isOpen: false, loading: false, result: '', error: '' });
-
+  // 🪙 TRUST SCORE & COINS LOGIC
   const score = calculateTrustScore(loans);
   const rating = getScoreRating(score);
-
-  // 🪙 LEADER COINS LOGIC
-  const leaderCoins = score > 300 ? (score - 300) * 12 : 0;
+  const baseLeaderCoins = (loans.length > 0 && score > 400) ? (score - 400) * 10 : 0;
+  const leaderCoins = baseLeaderCoins + bonusCoins;
 
   // 📈 WEALTH TRACKER LOGIC
   const totalSavedInterest = loans.reduce((sum, l) => {
@@ -38,14 +99,12 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
     }
     return sum;
   }, 0);
-  
   const projectedWealth = Math.round(totalSavedInterest * Math.pow(1.12, 5));
 
-  // 🚨 ULTRA-STRICT LOCK LOGIC 🚨
+  // 🚨 KYC LOCK LOGIC
   const hasBasicInfo = profile && profile.full_name && profile.phone;
   const hasAllDocs = profile && profile.aadhar_front_url && profile.aadhar_back_url && profile.pan_url && profile.selfie_url;
   const isVerified = profile && profile.kyc_status === 'Verified';
-
   const isEligibleForLoan = hasBasicInfo && hasAllDocs && isVerified;
 
   const handleAIAnalysis = async () => {
@@ -61,62 +120,145 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
     }
   };
 
-  // 🔥 PERSONALIZED NAME LOGIC 🔥
+  const handleQuizAnswer = (isCorrect) => {
+    if (hasPlayedToday) return; 
+    if (isCorrect) {
+      setQuizStatus('success');
+      const newTotalBonus = bonusCoins + 10;
+      setBonusCoins(newTotalBonus);
+      localStorage.setItem(bonusCoinsKey, newTotalBonus); 
+      localStorage.setItem(quizStorageKey, todayDate); 
+      setHasPlayedToday(true);
+    } else {
+      setQuizStatus('error');
+      localStorage.setItem(quizStorageKey, todayDate); 
+      setHasPlayedToday(true);
+    }
+  };
+
   const firstName = profile?.full_name ? profile.full_name.split(' ')[0] : '';
-  const titlePrefixEn = firstName ? `${firstName}'s` : "Your";
-  const titlePrefixHi = firstName ? `${firstName} का` : "आपका";
-  const displayTitle = lang === 'en' ? titlePrefixEn : titlePrefixHi;
+  const displayTitle = lang === 'en' ? (firstName ? `${firstName}'s` : "Your") : (firstName ? `${firstName} का` : "आपका");
 
   return (
     <div className="relative space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-1000 pb-10">
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-600/10 blur-[120px] rounded-full pointer-events-none -z-10"></div>
-      <div className="absolute top-[40%] left-[-10%] w-[400px] h-[400px] bg-purple-600/10 blur-[120px] rounded-full pointer-events-none -z-10"></div>
-
-      <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6 pt-4">
+      
+      <header className="mb-4 flex flex-col md:flex-row md:items-end justify-between gap-6 pt-4">
         <div>
-          <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight capitalize">
-            {displayTitle} <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 capitalize">{t("Dashboard", "डैशबोर्ड")}</span>
-          </h1>
+          <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight capitalize">{displayTitle} <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 capitalize">{t("Dashboard", "डैशबोर्ड")}</span></h1>
           <p className="text-slate-400 mt-2 text-lg">{t("Welcome to your personal financial command center.", "आपके पर्सनल फाइनेंसियल सेंटर में आपका स्वागत है।")}</p>
         </div>
-        
-        {/* 🔥 NEW PROFILE & AI BUTTONS 🔥 */}
         <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
-          <button onClick={() => onNavigate('my_profile')} className="flex-1 md:flex-none flex items-center justify-center space-x-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white px-5 py-3.5 rounded-2xl transition-all font-bold shadow-lg group">
-            <User className="h-5 w-5 text-slate-400 group-hover:text-white transition-colors" /> 
-            <span>{t("Profile", "प्रोफाइल")}</span>
-          </button>
-          
-          <button onClick={handleAIAnalysis} className="flex-1 md:flex-none flex items-center justify-center space-x-2 bg-[#111318] border border-cyan-500/30 hover:bg-cyan-500/10 hover:border-cyan-400 text-cyan-400 px-5 py-3.5 rounded-2xl transition-all font-bold shadow-[0_0_20px_rgba(6,182,212,0.15)] group">
-            <Bot className="h-5 w-5 group-hover:scale-110 transition-transform" /> 
-            <span>{t("AI Advisor", "AI सलाहकार")}</span>
-          </button>
+          <button onClick={() => onNavigate('my_profile')} className="flex-1 md:flex-none flex items-center justify-center space-x-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white px-5 py-3.5 rounded-2xl transition-all font-bold group shadow-lg"><User className="h-5 w-5 text-slate-400 group-hover:text-white" /> <span>{t("Profile", "प्रोफाइल")}</span></button>
+          <button onClick={handleAIAnalysis} className="flex-1 md:flex-none flex items-center justify-center space-x-2 bg-[#111318] border border-cyan-500/30 hover:bg-cyan-500/10 text-cyan-400 px-5 py-3.5 rounded-2xl transition-all font-bold group shadow-[0_0_20px_rgba(6,182,212,0.15)]"><Bot className="h-5 w-5 group-hover:scale-110" /> <span>{t("AI Advisor", "AI सलाहकार")}</span></button>
         </div>
       </header>
 
-      {/* 🌟 LEADER COINS GAMIFICATION CARD 🌟 */}
-      <div className="bg-gradient-to-br from-amber-900/40 via-[#1a1305] to-black border border-amber-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-[0_0_40px_rgba(245,158,11,0.15)] relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6 mb-8 group hover:border-amber-500/50 transition-all">
-        <div className="absolute -right-10 -top-10 w-40 h-40 bg-amber-500/20 blur-[50px] pointer-events-none group-hover:bg-amber-400/30 transition-colors duration-700"></div>
-        <div className="flex items-center space-x-5 relative z-10 w-full md:w-auto">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.4)] transform group-hover:scale-110 transition-transform duration-500 shrink-0">
-            <Award className="h-8 w-8 text-black" />
+      {/* 🌟 COMPACT STATUS BAR (TRUST SCORE + COINS) 🌟 */}
+      <div className="bg-[#111318]/80 backdrop-blur-md border border-white/10 px-5 py-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg mb-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-[30px] pointer-events-none"></div>
+        
+        {/* Trust Score Small */}
+        <div className="flex items-center space-x-4">
+          <div className={`p-2.5 rounded-xl border ${rating.bg} ${rating.border}`}>
+            <Star className={`h-5 w-5 ${rating.color}`} fill="currentColor" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white tracking-wide flex items-center">{t("Leader Rewards", "लीडर रिवॉर्ड्स")}</h2>
-            <p className="text-sm text-amber-200/70 mt-1">{t("Level:", "लेवल:")} <span className="font-bold text-amber-400 uppercase tracking-widest">{rating.label}</span></p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">{t("Trust Score", "ट्रस्ट स्कोर")}</p>
+            <div className="flex items-baseline">
+              <span className="text-xl font-black text-white">{score}</span>
+              <span className="text-xs text-slate-500 font-bold ml-1">/900</span>
+              <span className={`ml-3 text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest ${rating.bg} ${rating.color}`}>{rating.label}</span>
+            </div>
           </div>
         </div>
-        <div className="bg-black/50 px-6 py-4 rounded-2xl border border-amber-500/20 flex flex-col md:flex-row items-start md:items-center justify-between w-full md:w-auto relative z-10 shadow-inner gap-4">
-          <div>
-            <p className="text-[10px] text-amber-500/80 font-bold uppercase tracking-widest mb-1">{t("Coin Balance", "कॉइन बैलेंस")}</p>
-            <p className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 flex items-center">
-              {leaderCoins} <span className="text-sm text-amber-500 ml-2">LC</span>
-            </p>
+
+        <div className="hidden sm:block w-px h-10 bg-white/5"></div>
+
+        {/* Leader Coins Small */}
+        <div className="flex items-center space-x-4 border-t border-white/5 sm:border-0 pt-3 sm:pt-0">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-600/20 border border-amber-500/30">
+            <Award className="h-5 w-5 text-amber-400" />
           </div>
-          <div className="hidden md:block w-px h-10 bg-amber-500/20"></div>
-          <p className="text-[10px] text-amber-200/60 max-w-[120px] leading-tight font-bold uppercase tracking-widest">
-            {t("Use coins to lower your interest rate!", "लोन पर ब्याज कम करने के लिए कॉइन्स इस्तेमाल करें!")}
-          </p>
+          <div>
+            <p className="text-[10px] text-amber-500/70 font-bold uppercase tracking-widest mb-0.5">{t("Leader Coins", "लीडर कॉइन्स")}</p>
+            <div className="flex items-baseline">
+              <span className="text-xl font-black text-amber-400">{leaderCoins}</span>
+              <span className="text-xs text-amber-500/60 font-bold ml-1">LC</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CLICKABLE STATS HUD */}
+      <div onClick={() => onNavigate('loans')} className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8 cursor-pointer hover:-translate-y-1 transition-all duration-300 group/mainstats">
+         <div className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] group-hover/mainstats:bg-white/[0.04] transition-all relative overflow-hidden">
+            <Activity className="absolute -right-4 -top-4 w-24 h-24 text-blue-400 opacity-5" />
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">{t("Total Borrowed", "कुल लिया गया")}</p>
+            <p className="text-3xl font-black text-white">₹{totalDisbursed.toLocaleString('en-IN')}</p>
+         </div>
+         <div className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] group-hover/mainstats:bg-white/[0.04] transition-all relative overflow-hidden">
+            <TrendingUp className="absolute -right-4 -top-4 w-24 h-24 text-amber-400 opacity-5" />
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">{t("Interest & Fees", "ब्याज और फीस")}</p>
+            <p className="text-3xl font-black text-white">₹{totalAccruedInterest.toLocaleString('en-IN')}</p>
+         </div>
+         <div className="bg-gradient-to-br from-cyan-950/40 to-blue-900/40 border border-cyan-500/30 p-6 rounded-[2rem] shadow-xl relative overflow-hidden group hover:border-cyan-400/50 hover:shadow-[0_0_40px_rgba(6,182,212,0.25)] transition-all">
+            <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest mb-2 flex justify-between items-center">
+              <span>{t("Net Liability", "कुल बाकी रकम")}</span>
+              <ChevronRight className="h-4 w-4 text-cyan-400 opacity-0 group-hover/mainstats:opacity-100 transition-opacity" />
+            </p>
+            <p className="text-4xl font-black text-cyan-300 relative z-10 tracking-tight">₹{netLiability.toLocaleString('en-IN')}</p>
+         </div>
+      </div>
+
+      {/* 🕉️ AUTOMATED DAILY WISDOM & LEARN SECTION 🕉️ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 relative z-10">
+        <div className="bg-gradient-to-br from-orange-950/50 via-[#111318] to-[#111318] border border-orange-500/20 p-6 md:p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group min-h-[220px]">
+           {isLoadingDaily && <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20 backdrop-blur-sm"><Activity className="animate-spin text-orange-400" /></div>}
+           <div className="flex items-center space-x-3 mb-6">
+             <div className="p-2.5 bg-orange-500/10 rounded-xl border border-orange-500/20"><BookOpen className="h-5 w-5 text-orange-400" /></div>
+             <h3 className="text-xl font-bold text-white tracking-wide">{t("Daily Wisdom", "आज का सुविचार")}</h3>
+           </div>
+           {dailyData && (
+             <div className="animate-in fade-in duration-700">
+               <p className="text-orange-300 font-bold text-xl md:text-2xl mb-4 leading-relaxed font-serif">"{dailyData.shloka}"</p>
+               <p className="text-slate-300 text-sm mb-2 font-medium italic">- {dailyData.shloka_hi}</p>
+               <p className="text-slate-500 text-xs leading-relaxed">{dailyData.wisdom_text}</p>
+             </div>
+           )}
+        </div>
+
+        <div className="bg-gradient-to-br from-indigo-950/40 to-[#111318] border border-indigo-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+             <div className="flex items-center space-x-3">
+               <div className="p-2.5 bg-indigo-500/10 rounded-xl border border-indigo-500/30"><Lightbulb className="h-5 w-5 text-indigo-400" /></div>
+               <h3 className="text-xl font-bold text-white tracking-wide">{t("Learn & Earn", "सीखें और कमाएं")}</h3>
+             </div>
+             <div className="bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/30 text-amber-400 font-bold text-xs">🎁 +10 LC</div>
+          </div>
+
+          <div className="relative min-h-[140px] flex flex-col justify-center">
+            {isLoadingDaily ? <Activity className="animate-spin mx-auto text-indigo-400" /> :
+            quizStatus === 'success' ? (
+               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-5 text-center animate-in zoom-in">
+                 <Check className="h-10 w-10 text-emerald-400 mx-auto mb-2"/>
+                 <p className="text-emerald-200 text-sm font-bold">{t("Already Earned for Today! See you tomorrow.", "आज का इनाम मिल गया! कल मिलते हैं।")}</p>
+               </div>
+            ) : quizStatus === 'error' ? (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5 text-center">
+                 <X className="h-10 w-10 text-red-400 mx-auto mb-2"/>
+                 <p className="text-red-200 text-sm">{t("Better luck tomorrow!", "कल फिर कोशिश करें!")}</p>
+              </div>
+            ) : dailyData && (
+               <div>
+                 <p className="text-sm font-bold text-slate-300 mb-5">{dailyData.quiz_q}</p>
+                 <div className="grid grid-cols-1 gap-3">
+                    <button onClick={() => handleQuizAnswer(false)} className="text-left p-4 rounded-xl border border-white/5 bg-black/40 hover:bg-white/5 text-slate-400 transition-all text-sm">{dailyData.opt_a}</button>
+                    <button onClick={() => handleQuizAnswer(true)} className="text-left p-4 rounded-xl border border-white/5 bg-black/40 hover:bg-indigo-500/10 text-slate-400 transition-all text-sm">{dailyData.opt_b}</button>
+                 </div>
+               </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -151,7 +293,7 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
         </div>
       </div>
 
-      {/* 1. PROFILE STATUS BANNER */}
+      {/* PROFILE STATUS BANNER */}
       {!isEligibleForLoan && (
         <div className="bg-gradient-to-br from-red-950/40 to-black/40 border border-red-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-lg mb-8 relative overflow-hidden">
           <div className="absolute right-0 top-0 w-64 h-64 bg-red-500/10 blur-[50px] pointer-events-none"></div>
@@ -174,29 +316,9 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
         </div>
       )}
 
-      {/* 2. STATS (HUD) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <div className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] hover:bg-white/[0.04] transition-all relative overflow-hidden group">
-          <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><Activity className="w-24 h-24 text-blue-400" /></div>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2 flex items-center relative z-10"><DollarSign className="h-3 w-3 mr-1 text-blue-400" /> {t("Total Borrowed", "कुल लिया गया")}</p>
-          <p className="text-3xl font-black text-white relative z-10">₹{totalDisbursed.toLocaleString('en-IN')}</p>
-        </div>
-        <div className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] hover:bg-white/[0.04] transition-all relative overflow-hidden group">
-          <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><TrendingUp className="w-24 h-24 text-amber-400" /></div>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2 flex items-center relative z-10"><Percent className="h-3 w-3 mr-1 text-amber-400" /> {t("Interest & Fees", "ब्याज और फीस")}</p>
-          <p className="text-3xl font-black text-white relative z-10">₹{totalAccruedInterest.toLocaleString('en-IN')}</p>
-        </div>
-        <div className="bg-gradient-to-br from-cyan-950/40 to-blue-900/40 border border-cyan-500/30 p-6 rounded-[2rem] shadow-[0_0_30px_rgba(6,182,212,0.15)] relative overflow-hidden group">
-          <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-cyan-500/20 blur-[30px] rounded-full group-hover:bg-cyan-400/30 transition-all"></div>
-          <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest mb-2 relative z-10">{t("Net Liability", "कुल बाकी रकम")}</p>
-          <p className="text-4xl font-black text-cyan-300 relative z-10 tracking-tight">₹{netLiability.toLocaleString('en-IN')}</p>
-        </div>
-      </div>
-
-      {/* 3. REQUEST NEW LOAN BUTTON */}
+      {/* REQUEST NEW LOAN BUTTON */}
       <div className={`mt-8 relative group ${!isEligibleForLoan ? 'opacity-90' : ''}`}>
         {isEligibleForLoan && <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-cyan-600 rounded-[2.5rem] blur-xl opacity-30 group-hover:opacity-60 transition-opacity duration-500"></div>}
-        
         <button
           onClick={() => {
             if (isEligibleForLoan) {
@@ -214,7 +336,6 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
             <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg transition-transform duration-500 ${isEligibleForLoan ? 'bg-gradient-to-br from-indigo-500 to-cyan-500 group-hover:scale-110' : 'bg-red-500/10 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]'}`}>
               {isEligibleForLoan ? <Plus className="h-8 w-8 text-white" /> : <Lock className="h-7 w-7 text-red-400" />}
             </div>
-            
             <div>
               <h2 className={`text-2xl font-black mb-1 tracking-wide ${isEligibleForLoan ? 'text-white' : 'text-red-400'}`}>
                 {isEligibleForLoan ? t("Apply for a New Loan", "नया लोन अप्लाई करें") : t("Loan Feature Locked", "लोन सुविधा लॉक है")}
@@ -224,35 +345,13 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
               </p>
             </div>
           </div>
-
           <div className={`mt-6 sm:mt-0 w-12 h-12 border rounded-full flex items-center justify-center transition-colors ${isEligibleForLoan ? 'border-white/10 group-hover:bg-white/10' : 'border-red-500/30 bg-red-500/10'}`}>
             {isEligibleForLoan ? <ChevronRight className="h-6 w-6 text-slate-300 group-hover:text-white" /> : <Lock className="h-5 w-5 text-red-400" />}
           </div>
         </button>
       </div>
 
-      {/* TRUST SCORE COMPONENT */}
-      <div className="bg-[#111318] border border-white/[0.04] p-6 md:p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden mt-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-          <div className="flex items-center space-x-5">
-            <div className={`p-4 rounded-2xl shrink-0 ${rating.bg} ${rating.border}`}>
-              <Star className={`h-8 w-8 ${rating.color}`} fill="currentColor" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-white tracking-wide">{t("LeaderPro Trust Score", "लीडरप्रो ट्रस्ट स्कोर")}</h2>
-              <p className="text-sm text-slate-400 mt-1">{t("Based on your repayment history & KYC", "आपकी पेमेंट हिस्ट्री और KYC पर आधारित")}</p>
-            </div>
-          </div>
-          <div className="text-left md:text-right bg-black/30 p-4 rounded-2xl border border-white/5">
-            <div className="flex items-baseline md:justify-end">
-              <span className={`text-4xl font-black leading-none ${rating.color}`}>{score}</span>
-              <span className="text-lg text-slate-500 font-bold ml-1">/900</span>
-            </div>
-            <span className={`inline-block mt-2 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider ${rating.bg} ${rating.color}`}>{rating.label} {t("Member", "सदस्य")}</span>
-          </div>
-        </div>
-      </div>
-
+      {/* Analytics Component */}
       <UserVisualAnalytics loans={loans} t={t} />
 
       <AIInsightsModal isOpen={aiModal.isOpen} onClose={() => setAiModal({ ...aiModal, isOpen: false })} loading={aiModal.loading} result={aiModal.result} error={aiModal.error} t={t} />
@@ -323,7 +422,7 @@ export function UserVisualAnalytics({ loans, t }) {
   );
 }
 
-// 🌟 ORIGINATION VIEW (WITH COIN DISCOUNT FEATURE FIXED) 🌟
+// 🌟 ORIGINATION VIEW 🌟
 export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showAlert, loans = [] }) {
   const { t } = useContext(LanguageContext);
   const [amount, setAmount] = useState(100000);
@@ -333,14 +432,21 @@ export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showA
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [consent, setConsent] = useState(false);
 
-  // 🪙 COINS STATE LOGIC
+  // 🪙 COINS STATE LOGIC (FIXED)
   const [applyDiscount, setApplyDiscount] = useState(false);
   const score = calculateTrustScore(loans);
   
-  const totalLeaderCoins = score > 300 ? (score - 300) * 12 : 0;
-  const hasEnoughCoins = totalLeaderCoins >= 500;
+  // 1. ट्रस्ट स्कोर वाले कॉइन्स
+  const baseLeaderCoins = (loans.length > 0 && score > 400) ? (score - 400) * 10 : 0;
   
-  // 🚨 जादू यहाँ है: अगर डिस्काउंट ON है, तो बैलेंस में से 500 माइनस कर दो 🚨
+  // 2. क्विज़ से जीते हुए कॉइन्स (मेमोरी से निकालो)
+  const bonusCoinsKey = `bonus_coins_${session.user.id}`;
+  const earnedBonusCoins = Number(localStorage.getItem(bonusCoinsKey)) || 0;
+  
+  // 3. दोनों को जोड़ दो!
+  const totalLeaderCoins = baseLeaderCoins + earnedBonusCoins;
+  
+  const hasEnoughCoins = totalLeaderCoins >= 500;
   const displayedCoins = applyDiscount ? totalLeaderCoins - 500 : totalLeaderCoins;
 
   const baseInterestRate = 24;
