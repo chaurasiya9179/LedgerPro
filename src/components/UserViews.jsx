@@ -8,7 +8,7 @@ import {
   Bot, Star, CreditCard, ChevronRight, FileText, Plus, Send, Clock, User,
   Phone, Hash, MapPin, Activity, Upload, Download, PieChart, BarChart,
   MessageSquare, MessageCircle, Mail, Check, X, UserPlus, Edit, Trash,
-  Bell, Headset, Lock, AlertCircle, Percent, TrendingUp, ShieldCheck, DollarSign, Award, Gift, LineChart,BookOpen, Lightbulb
+  Bell, Headset, Lock, AlertCircle, Percent, TrendingUp, ShieldCheck, DollarSign, Award, Gift, LineChart, BookOpen, Lightbulb, Flame, Play, Pause, SkipForward, SkipBack, Headphones, Music
 } from 'lucide-react';
 import { LanguageContext } from '../App';
 import { supabaseUrl, supabaseKey, calculateAccruedInterest, callGeminiAI, calculateTrustScore, getScoreRating } from '../utils';
@@ -22,26 +22,90 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
   const [dailyData, setDailyData] = useState(null);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-  // 🎯 QUIZ PLAYED & BONUS COIN LOGIC
+  // 🎯 QUIZ PLAYED LOGIC
   const todayDate = new Date().toDateString(); 
   const quizStorageKey = `quiz_played_${session.user.id}`;
   const dataStorageKey = `daily_bundle_data`;
   const bonusCoinsKey = `bonus_coins_${session.user.id}`;
+  const streakKey = `quiz_streak_${session.user.id}`;
+  const lastDateKey = `quiz_last_date_${session.user.id}`;
 
   const [hasPlayedToday, setHasPlayedToday] = useState(localStorage.getItem(quizStorageKey) === todayDate);
   const [quizStatus, setQuizStatus] = useState(hasPlayedToday ? 'success' : null);
   const [bonusCoins, setBonusCoins] = useState(Number(localStorage.getItem(bonusCoinsKey)) || 0);
+  const [streak, setStreak] = useState(Number(localStorage.getItem(streakKey)) || 0);
+
+  // 🎡 SPIN THE WHEEL STATE
+  const [showWheel, setShowWheel] = useState(false);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [spinResult, setSpinResult] = useState(null);
+  const [wheelDegrees, setWheelDegrees] = useState(0);
+
+  // 🎙️ REAL AUDIO PODCAST PLAYER STATE
+  const podcasts = [
+    { id: 1, title: t("Boost CIBIL Score Fast", "सिबिल स्कोर तेज़ी से कैसे बढ़ाएं?"), duration: "6:12", host: "LeaderPro Studios", color: "from-green-500 to-emerald-700", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
+    { id: 2, title: t("Emergency Fund Basics", "इमरजेंसी फंड क्यों है ज़रूरी?"), duration: "7:05", host: "LeaderPro Studios", color: "from-blue-500 to-indigo-700", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
+    { id: 3, title: t("Dividend Investing 101", "डिविडेंड यील्ड से पैसे कैसे कमाएं?"), duration: "5:45", host: "LeaderPro Studios", color: "from-purple-500 to-pink-700", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3" }
+  ];
+  
+  const [activePodcast, setActivePodcast] = useState(podcasts[0]);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playProgress, setPlayProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef(null);
+
+  // Play/Pause Audio Element Setup
+  useEffect(() => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.play().catch(e => console.log("Audio play blocked by browser:", e));
+      } else {
+        audioRef.current.pause();
+      }
+    }
+  }, [isPlaying, activePodcast]);
+
+  const togglePlay = (podcast) => {
+    if (activePodcast.id !== podcast.id) {
+      setActivePodcast(podcast);
+      setPlayProgress(0);
+      setCurrentTime(0);
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+      if (audioRef.current.duration) {
+        setPlayProgress((audioRef.current.currentTime / audioRef.current.duration) * 100);
+      }
+    }
+  };
+
+  const handleAudioEnded = () => {
+    setIsPlaying(false);
+    setPlayProgress(0);
+    setCurrentTime(0);
+  };
+
+  const formatTime = (timeInSeconds) => {
+    if (!timeInSeconds || isNaN(timeInSeconds)) return "0:00";
+    const m = Math.floor(timeInSeconds / 60);
+    const s = Math.floor(timeInSeconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
 
   // 🤖 FETCH DAILY WISDOM & QUIZ FROM AI
   useEffect(() => {
     const loadDailyContent = async () => {
       const savedBundle = JSON.parse(localStorage.getItem(dataStorageKey));
-      
       if (savedBundle && savedBundle.date === todayDate) {
         setDailyData(savedBundle.content);
         return;
       }
-
       setIsLoadingDaily(true);
       const prompt = `Generate a daily finance bundle in JSON format:
       1. shloka: A powerful Sanskrit Shloka about Karma or Discipline.
@@ -51,30 +115,26 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
       5. opt_a: Wrong option.
       6. opt_b: Correct option.
       Return ONLY valid JSON.`;
-
       try {
         const response = await callGeminiAI(prompt, "You are a wise financial guru.");
         const cleanJson = response.replace(/```json|```/g, "").trim();
         const parsed = JSON.parse(cleanJson);
-        
         const newBundle = { date: todayDate, content: parsed };
         localStorage.setItem(dataStorageKey, JSON.stringify(newBundle));
         setDailyData(parsed);
       } catch (err) {
-        console.error("AI Daily Fetch Error:", err);
         setDailyData({
-          shloka: "कर्मण्येवाधिकारस्ते मा फलेषु कदाचन।",
-          shloka_hi: "कर्म पर आपका अधिकार है, फल पर नहीं।",
-          wisdom_text: "फोकस अपने काम पर रखो, पैसा अपने आप पीछे आएगा।",
+          shloka: "उद्यमेन हि सिध्यन्ति कार्याणि न मनोरथैः।",
+          shloka_hi: "मेहनत से ही काम पूरे होते हैं, केवल इच्छा करने से नहीं।",
+          wisdom_text: "अपने कर्ज़ को चुकाने के लिए छोटे-छोटे कदम उठाएं, सफलता ज़रूर मिलेगी।",
           quiz_q: "ब्याज बचाने का सबसे अच्छा तरीका क्या है?",
           opt_a: "देर से पेमेंट करना",
-          opt_b: "समय से पहले मूलधन चुकाना"
+          opt_b: "समय से पहले मूलधन (Principal) चुकाना"
         });
       } finally {
         setIsLoadingDaily(false);
       }
     };
-
     loadDailyContent();
   }, [todayDate, session.user.id]);
 
@@ -101,7 +161,6 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
   }, 0);
   const projectedWealth = Math.round(totalSavedInterest * Math.pow(1.12, 5));
 
-  // 🚨 KYC LOCK LOGIC
   const hasBasicInfo = profile && profile.full_name && profile.phone;
   const hasAllDocs = profile && profile.aadhar_front_url && profile.aadhar_back_url && profile.pan_url && profile.selfie_url;
   const isVerified = profile && profile.kyc_status === 'Verified';
@@ -111,29 +170,70 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
     setAiModal({ isOpen: true, loading: true, result: '', error: '' });
     const summary = { totalBorrowed: totalDisbursed, totalPaidBack: totalRecovery, currentDebt: netLiability, totalInterestAccrued: totalAccruedInterest, activeLoansCount: activeLoans.length };
     const promptText = `My Debt Profile: ${JSON.stringify(summary)}. Please provide a quick assessment of my financial health and give 2 practical tips on managing or paying off this debt.`;
-    const sysInst = `You are a helpful and empathetic personal finance AI advisor. Respond in ${lang === 'en' ? 'English' : 'Hindi (written in standard Latin/Hinglish script)'}. Be encouraging, keep it short, and use bullet points for the tips.`;
+    const sysInst = `You are a helpful empathetic personal finance AI advisor. Respond in ${lang === 'en' ? 'English' : 'Hindi'}. Be encouraging, keep it short, use bullet points.`;
     try {
       const response = await callGeminiAI(promptText, sysInst);
       setAiModal({ isOpen: true, loading: false, result: response, error: '' });
     } catch (e) {
-      setAiModal({ isOpen: true, loading: false, result: '', error: t('AI Analysis failed. Please try again.', 'AI विश्लेषण विफल हो गया। कृपया दोबारा कोशिश करें।') });
+      setAiModal({ isOpen: true, loading: false, result: '', error: t('AI Analysis failed.', 'AI विश्लेषण विफल हो गया।') });
     }
   };
 
+  // 🔥 HANDLE STREAK & QUIZ
   const handleQuizAnswer = (isCorrect) => {
     if (hasPlayedToday) return; 
+    let newStreak = streak;
+    const lastDatePlayed = localStorage.getItem(lastDateKey);
+    const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
+    
+    if (lastDatePlayed === yesterdayStr) {
+      newStreak += 1; 
+    } else if (lastDatePlayed !== todayDate) {
+      newStreak = 1; 
+    }
+    
+    setStreak(newStreak);
+    localStorage.setItem(streakKey, newStreak);
+    localStorage.setItem(lastDateKey, todayDate);
+
+    let currentBonusCoins = bonusCoins;
     if (isCorrect) {
       setQuizStatus('success');
-      const newTotalBonus = bonusCoins + 10;
-      setBonusCoins(newTotalBonus);
-      localStorage.setItem(bonusCoinsKey, newTotalBonus); 
-      localStorage.setItem(quizStorageKey, todayDate); 
-      setHasPlayedToday(true);
+      currentBonusCoins += 10;
+      setBonusCoins(currentBonusCoins);
+      localStorage.setItem(bonusCoinsKey, currentBonusCoins); 
     } else {
       setQuizStatus('error');
-      localStorage.setItem(quizStorageKey, todayDate); 
-      setHasPlayedToday(true);
     }
+    localStorage.setItem(quizStorageKey, todayDate); 
+    setHasPlayedToday(true);
+
+    if (newStreak > 0 && newStreak % 1 === 0) { // Testing ke liye 1 rakha hai, baad me 7 kar dena
+      setTimeout(() => {
+        setShowWheel(true);
+      }, 1500); 
+    }
+  };
+
+  const handleSpin = () => {
+    setIsSpinning(true);
+    const spinDegrees = 1800 + Math.floor(Math.random() * 360); 
+    setWheelDegrees(spinDegrees);
+    setTimeout(() => {
+       const rewards = [50, 100, 150, 200, 500];
+       const won = rewards[Math.floor(Math.random() * rewards.length)];
+       setSpinResult(won);
+       const finalCoins = bonusCoins + won;
+       setBonusCoins(finalCoins);
+       localStorage.setItem(bonusCoinsKey, finalCoins);
+       setIsSpinning(false);
+    }, 3500); 
+  };
+
+  const closeWheel = () => {
+    setShowWheel(false);
+    setSpinResult(null);
+    setWheelDegrees(0);
   };
 
   const firstName = profile?.full_name ? profile.full_name.split(' ')[0] : '';
@@ -141,6 +241,16 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
 
   return (
     <div className="relative space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-1000 pb-10">
+      
+      {/* 🎵 Hidden Audio Element for actual sound playback 🎵 */}
+      <audio 
+        ref={audioRef} 
+        src={activePodcast.audioUrl} 
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleAudioEnded}
+        className="hidden"
+      />
+
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-600/10 blur-[120px] rounded-full pointer-events-none -z-10"></div>
       
       <header className="mb-4 flex flex-col md:flex-row md:items-end justify-between gap-6 pt-4">
@@ -154,71 +264,114 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
         </div>
       </header>
 
-      {/* 🌟 COMPACT STATUS BAR (TRUST SCORE + COINS) 🌟 */}
+      {/* 🌟 COMPACT STATUS BAR 🌟 */}
       <div className="bg-[#111318]/80 backdrop-blur-md border border-white/10 px-5 py-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg mb-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-[30px] pointer-events-none"></div>
-        
         <div className="flex items-center space-x-4">
-          <div className={`p-2.5 rounded-xl border ${rating.bg} ${rating.border}`}>
-            <Star className={`h-5 w-5 ${rating.color}`} fill="currentColor" />
-          </div>
-          <div>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">{t("Trust Score", "ट्रस्ट स्कोर")}</p>
-            <div className="flex items-baseline">
-              <span className="text-xl font-black text-white">{score}</span>
-              <span className="text-xs text-slate-500 font-bold ml-1">/900</span>
-              <span className={`ml-3 text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest ${rating.bg} ${rating.color}`}>{rating.label}</span>
-            </div>
+          <div className={`p-2.5 rounded-xl border ${rating.bg} ${rating.border}`}><Star className={`h-5 w-5 ${rating.color}`} fill="currentColor" /></div>
+          <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">{t("Trust Score", "ट्रस्ट स्कोर")}</p>
+            <div className="flex items-baseline"><span className="text-xl font-black text-white">{score}</span><span className="text-xs text-slate-500 font-bold ml-1">/900</span><span className={`ml-3 text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest ${rating.bg} ${rating.color}`}>{rating.label}</span></div>
           </div>
         </div>
-
         <div className="hidden sm:block w-px h-10 bg-white/5"></div>
-
         <div className="flex items-center space-x-4 border-t border-white/5 sm:border-0 pt-3 sm:pt-0">
-          <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-600/20 border border-amber-500/30">
-            <Award className="h-5 w-5 text-amber-400" />
-          </div>
-          <div>
-            <p className="text-[10px] text-amber-500/70 font-bold uppercase tracking-widest mb-0.5">{t("Leader Coins", "लीडर कॉइन्स")}</p>
-            <div className="flex items-baseline">
-              <span className="text-xl font-black text-amber-400">{leaderCoins}</span>
-              <span className="text-xs text-amber-500/60 font-bold ml-1">LC</span>
-            </div>
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-600/20 border border-amber-500/30"><Award className="h-5 w-5 text-amber-400" /></div>
+          <div><p className="text-[10px] text-amber-500/70 font-bold uppercase tracking-widest mb-0.5">{t("Leader Coins", "लीडर कॉइन्स")}</p>
+            <div className="flex items-baseline"><span className="text-xl font-black text-amber-400">{leaderCoins}</span><span className="text-xs text-amber-500/60 font-bold ml-1">LC</span></div>
           </div>
         </div>
       </div>
 
       {/* CLICKABLE STATS HUD */}
       <div onClick={() => onNavigate('loans')} className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-2 cursor-pointer hover:-translate-y-1 transition-all duration-300 group/mainstats">
-         <div className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] group-hover/mainstats:bg-white/[0.04] transition-all relative overflow-hidden">
-            <Activity className="absolute -right-4 -top-4 w-24 h-24 text-blue-400 opacity-5" />
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">{t("Total Borrowed", "कुल लिया गया")}</p>
-            <p className="text-3xl font-black text-white">₹{totalDisbursed.toLocaleString('en-IN')}</p>
-         </div>
-         <div className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] group-hover/mainstats:bg-white/[0.04] transition-all relative overflow-hidden">
-            <TrendingUp className="absolute -right-4 -top-4 w-24 h-24 text-amber-400 opacity-5" />
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">{t("Interest & Fees", "ब्याज और फीस")}</p>
-            <p className="text-3xl font-black text-white">₹{totalAccruedInterest.toLocaleString('en-IN')}</p>
-         </div>
+         <div className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] group-hover/mainstats:bg-white/[0.04] transition-all relative overflow-hidden"><Activity className="absolute -right-4 -top-4 w-24 h-24 text-blue-400 opacity-5" /><p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">{t("Total Borrowed", "कुल लिया गया")}</p><p className="text-3xl font-black text-white">₹{totalDisbursed.toLocaleString('en-IN')}</p></div>
+         <div className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] group-hover/mainstats:bg-white/[0.04] transition-all relative overflow-hidden"><TrendingUp className="absolute -right-4 -top-4 w-24 h-24 text-amber-400 opacity-5" /><p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">{t("Interest & Fees", "ब्याज और फीस")}</p><p className="text-3xl font-black text-white">₹{totalAccruedInterest.toLocaleString('en-IN')}</p></div>
          <div className="bg-gradient-to-br from-cyan-950/40 to-blue-900/40 border border-cyan-500/30 p-6 rounded-[2rem] shadow-xl relative overflow-hidden group hover:border-cyan-400/50 hover:shadow-[0_0_40px_rgba(6,182,212,0.25)] transition-all">
-            <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest mb-2 flex justify-between items-center">
-              <span>{t("Net Liability", "कुल बाकी रकम")}</span>
-              <ChevronRight className="h-4 w-4 text-cyan-400 opacity-0 group-hover/mainstats:opacity-100 transition-opacity" />
-            </p>
+            <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest mb-2 flex justify-between items-center"><span>{t("Net Liability", "कुल बाकी रकम")}</span><ChevronRight className="h-4 w-4 text-cyan-400 opacity-0 group-hover/mainstats:opacity-100 transition-opacity" /></p>
             <p className="text-4xl font-black text-cyan-300 relative z-10 tracking-tight">₹{netLiability.toLocaleString('en-IN')}</p>
          </div>
       </div>
 
-      {/* 📊 VISUAL ANALYTICS (MOVED TO TOP) 📊 */}
       <UserVisualAnalytics loans={loans} t={t} />
 
-      {/* 🕉️ AUTOMATED DAILY WISDOM & LEARN SECTION 🕉️ */}
+      {/* 🎙️ LEADERPRO SHORTS (WITH REAL AUDIO) 🎙️ */}
+      <div className="bg-[#111318] border border-white/5 rounded-[2.5rem] shadow-2xl relative overflow-hidden mt-8 group hover:border-white/10 transition-colors">
+        <div className={`absolute top-0 left-0 w-full h-32 bg-gradient-to-b ${activePodcast.color} opacity-20 blur-3xl pointer-events-none transition-colors duration-1000`}></div>
+        
+        <div className="p-6 md:p-8 relative z-10 flex flex-col md:flex-row gap-8 items-center">
+          {/* Currently Playing Art */}
+          <div className="w-full md:w-1/3 flex flex-col items-center shrink-0">
+            <div className={`w-40 h-40 rounded-3xl bg-gradient-to-br ${activePodcast.color} flex items-center justify-center shadow-2xl mb-4 relative overflow-hidden group-hover:scale-105 transition-transform duration-500`}>
+              {isPlaying && <div className="absolute inset-0 bg-white/10 animate-pulse"></div>}
+              <Headphones className="h-16 w-16 text-white drop-shadow-lg" />
+            </div>
+            <h3 className="text-xl font-bold text-white text-center leading-tight mb-1">{activePodcast.title}</h3>
+            <p className="text-sm text-slate-400 text-center flex items-center"><User className="h-3 w-3 mr-1"/> By {activePodcast.host}</p>
+            
+            {/* Player Controls */}
+            <div className="flex items-center space-x-6 mt-6">
+              <button className="text-slate-400 hover:text-white transition-colors"><SkipBack className="h-6 w-6" /></button>
+              <button onClick={() => togglePlay(activePodcast)} className="w-14 h-14 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                {isPlaying ? <Pause className="h-7 w-7" /> : <Play className="h-7 w-7 ml-1" />}
+              </button>
+              <button className="text-slate-400 hover:text-white transition-colors"><SkipForward className="h-6 w-6" /></button>
+            </div>
+            {/* Real Progress Bar */}
+            <div className="w-full mt-5 flex items-center space-x-3 px-2">
+              <span className="text-xs text-slate-500 font-mono">{formatTime(currentTime)}</span>
+              <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden cursor-pointer">
+                <div className="h-full bg-white transition-all duration-300 ease-linear" style={{ width: `${playProgress}%` }}></div>
+              </div>
+              <span className="text-xs text-slate-500 font-mono">{activePodcast.duration}</span>
+            </div>
+          </div>
+
+          {/* Playlist */}
+          <div className="w-full md:w-2/3 border-t md:border-t-0 md:border-l border-white/10 pt-6 md:pt-0 md:pl-8">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-lg font-bold text-white tracking-wide flex items-center"><Music className="h-5 w-5 mr-2 text-indigo-400"/> {t("LeaderPro Shorts", "लीडरप्रो शॉर्ट्स")}</h4>
+              <span className="text-[10px] uppercase tracking-widest font-bold bg-indigo-500/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">Podcast</span>
+            </div>
+            
+            <div className="space-y-3">
+              {podcasts.map((podcast) => (
+                <div 
+                  key={podcast.id} 
+                  onClick={() => togglePlay(podcast)}
+                  className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all ${activePodcast.id === podcast.id ? 'bg-white/10 border border-white/20 shadow-inner' : 'bg-black/30 border border-white/5 hover:bg-white/5'}`}
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center shrink-0">
+                      {activePodcast.id === podcast.id && isPlaying ? <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div> : <Play className="h-4 w-4 text-slate-400 ml-0.5" />}
+                    </div>
+                    <div>
+                      <p className={`font-bold text-sm ${activePodcast.id === podcast.id ? 'text-white' : 'text-slate-300'}`}>{podcast.title}</p>
+                      <p className="text-xs text-slate-500">{podcast.host}</p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono text-slate-500">{podcast.duration}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 🕉️ AUTOMATED DAILY WISDOM & LEARN SECTION (WITH STREAK) 🕉️ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 mt-6 relative z-10">
         <div className="bg-gradient-to-br from-orange-950/50 via-[#111318] to-[#111318] border border-orange-500/20 p-6 md:p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group min-h-[220px]">
            {isLoadingDaily && <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20 backdrop-blur-sm"><Activity className="animate-spin text-orange-400" /></div>}
-           <div className="flex items-center space-x-3 mb-6">
-             <div className="p-2.5 bg-orange-500/10 rounded-xl border border-orange-500/20"><BookOpen className="h-5 w-5 text-orange-400" /></div>
-             <h3 className="text-xl font-bold text-white tracking-wide">{t("Daily Wisdom", "आज का सुविचार")}</h3>
+           <div className="flex items-center justify-between mb-6">
+             <div className="flex items-center space-x-3">
+               <div className="p-2.5 bg-orange-500/10 rounded-xl border border-orange-500/20"><BookOpen className="h-5 w-5 text-orange-400" /></div>
+               <h3 className="text-xl font-bold text-white tracking-wide">{t("Daily Wisdom", "आज का सुविचार")}</h3>
+             </div>
+             {streak > 0 && (
+                <div className="flex items-center space-x-1.5 bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 px-3 py-1.5 rounded-full shadow-[0_0_15px_rgba(249,115,22,0.2)] animate-in slide-in-from-right duration-500">
+                  <Flame className={`h-4 w-4 ${hasPlayedToday ? 'text-orange-400 animate-pulse' : 'text-slate-400'}`} />
+                  <span className="text-xs font-black text-orange-400 uppercase tracking-widest">{streak} {t("Day Streak", "दिन की स्ट्रीक")}</span>
+                </div>
+             )}
            </div>
            {dailyData && (
              <div className="animate-in fade-in duration-700">
@@ -235,15 +388,17 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
                <div className="p-2.5 bg-indigo-500/10 rounded-xl border border-indigo-500/30"><Lightbulb className="h-5 w-5 text-indigo-400" /></div>
                <h3 className="text-xl font-bold text-white tracking-wide">{t("Learn & Earn", "सीखें और कमाएं")}</h3>
              </div>
-             <div className="bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/30 text-amber-400 font-bold text-xs">🎁 +10 LC</div>
+             <div className="bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/30 text-amber-400 font-bold text-xs flex items-center shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+               <Gift className="h-3.5 w-3.5 mr-1.5" /> {t("Win 10 LC", "10 LC जीतें")}
+             </div>
           </div>
-
           <div className="relative min-h-[140px] flex flex-col justify-center">
             {isLoadingDaily ? <Activity className="animate-spin mx-auto text-indigo-400" /> :
             quizStatus === 'success' ? (
                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-5 text-center animate-in zoom-in">
                  <Check className="h-10 w-10 text-emerald-400 mx-auto mb-2"/>
                  <p className="text-emerald-200 text-sm font-bold">{t("Already Earned for Today! See you tomorrow.", "आज का इनाम मिल गया! कल मिलते हैं।")}</p>
+                 {streak % 7 !== 0 && <p className="text-[10px] text-emerald-500/80 mt-2 font-bold uppercase tracking-widest">{7 - (streak % 7)} {t("days to Jackpot!", "दिन बाद जैकपॉट!")}</p>}
                </div>
             ) : quizStatus === 'error' ? (
               <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5 text-center">
@@ -271,9 +426,7 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
              <div className="p-2.5 bg-emerald-500/20 rounded-xl border border-emerald-500/30"><LineChart className="h-6 w-6 text-emerald-400" /></div>
              <h2 className="text-2xl font-bold text-white tracking-wide">{t("Smart Wealth Tracker", "स्मार्ट वेल्थ ट्रैकर")}</h2>
           </div>
-          <p className="text-sm text-slate-400 leading-relaxed mb-6">
-            {t("Don't just borrow, start building wealth! Here is how much you've saved by using Leader Coins to reduce your interest.", "सिर्फ कर्ज़ मत लीजिए, वेल्थ बनाना शुरू कीजिए! देखिए लीडर कॉइन्स का इस्तेमाल करके आपने ब्याज में कितने पैसे बचाए हैं।")}
-          </p>
+          <p className="text-sm text-slate-400 leading-relaxed mb-6">{t("Don't just borrow, start building wealth! Here is how much you've saved by using Leader Coins to reduce your interest.", "सिर्फ कर्ज़ मत लीजिए, वेल्थ बनाना शुरू कीजिए! देखिए लीडर कॉइन्स का इस्तेमाल करके आपने ब्याज में कितने पैसे बचाए हैं।")}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
              <div className="bg-black/40 p-5 rounded-2xl border border-white/5 border-l-2 border-l-emerald-500">
                <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t("Saved on Interest", "ब्याज पर बचाए")}</p>
@@ -288,9 +441,7 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
         <div className="w-full lg:w-1/3 bg-emerald-950/30 p-6 rounded-3xl border border-emerald-500/20 shadow-inner relative z-10 text-center lg:text-left">
            <div className="flex justify-center lg:justify-start mb-3"><TrendingUp className="h-8 w-8 text-emerald-400" /></div>
            <h4 className="text-white font-bold text-lg mb-2">{t("The Power of Compounding", "कंपाउंडिंग की ताकत")}</h4>
-           <p className="text-xs text-emerald-200/70 leading-relaxed">
-             {t("If you invest your saved ₹" + Math.floor(totalSavedInterest) + " in a High Dividend Yield portfolio or equity SIP, it could grow to ₹" + projectedWealth + " in just 5 years at an expected 12% return!", "अगर आप अपने बचाए हुए ₹" + Math.floor(totalSavedInterest) + " को किसी हाई-डिविडेंड यील्ड (High Dividend Yield) पोर्टफोलियो या SIP में लगाते हैं, तो 12% के अनुमानित रिटर्न के साथ यह 5 साल में ₹" + projectedWealth + " हो सकता है!")}
-           </p>
+           <p className="text-xs text-emerald-200/70 leading-relaxed">{t("If you invest your saved ₹" + Math.floor(totalSavedInterest) + " in a High Dividend Yield portfolio or equity SIP, it could grow to ₹" + projectedWealth + " in just 5 years at an expected 12% return!", "अगर आप अपने बचाए हुए ₹" + Math.floor(totalSavedInterest) + " को किसी हाई-डिविडेंड यील्ड (High Dividend Yield) पोर्टफोलियो या SIP में लगाते हैं, तो 12% के अनुमानित रिटर्न के साथ यह 5 साल में ₹" + projectedWealth + " हो सकता है!")}</p>
         </div>
       </div>
 
@@ -299,60 +450,54 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
         <div className="bg-gradient-to-br from-red-950/40 to-black/40 border border-red-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-lg mb-8 relative overflow-hidden">
           <div className="absolute right-0 top-0 w-64 h-64 bg-red-500/10 blur-[50px] pointer-events-none"></div>
           <div className="relative z-10">
-            <h2 className="text-2xl font-bold text-red-400 flex items-center gap-3">
-               <AlertCircle className="h-7 w-7" /> 
-               {!hasBasicInfo ? t("Profile Incomplete", "प्रोफाइल अधूरी है") : !hasAllDocs ? t("KYC Documents Missing", "KYC डाक्यूमेंट्स बाकी हैं") : t("Verification Pending", "वेरिफिकेशन पेंडिंग है")}
-            </h2>
-            <p className="text-sm text-red-200/70 mt-3 leading-relaxed">
-              {!hasBasicInfo 
-                ? t("Please fill your Name and Phone in profile to start.", "लोन शुरू करने के लिए कृपया अपना नाम और फोन नंबर भरें।") 
-                : !hasAllDocs 
-                ? t("You must upload all 4 KYC documents for approval.", "लोन के लिए आपको सभी 4 KYC डाक्यूमेंट्स अपलोड करने होंगे।") 
-                : t("Your documents are uploaded. Please wait for the Admin to verify your account.", "डाक्यूमेंट्स अपलोड हो गए हैं। कृपया एडमिन द्वारा वेरिफिकेशन का इंतज़ार करें।")}
-            </p>
+            <h2 className="text-2xl font-bold text-red-400 flex items-center gap-3"><AlertCircle className="h-7 w-7" /> {!hasBasicInfo ? t("Profile Incomplete", "प्रोफाइल अधूरी है") : !hasAllDocs ? t("KYC Documents Missing", "KYC डाक्यूमेंट्स बाकी हैं") : t("Verification Pending", "वेरिफिकेशन पेंडिंग है")}</h2>
+            <p className="text-sm text-red-200/70 mt-3 leading-relaxed">{!hasBasicInfo ? t("Please fill your Name and Phone in profile to start.", "लोन शुरू करने के लिए कृपया अपना नाम और फोन नंबर भरें।") : !hasAllDocs ? t("You must upload all 4 KYC documents for approval.", "लोन के लिए आपको सभी 4 KYC डाक्यूमेंट्स अपलोड करने होंगे।") : t("Your documents are uploaded. Please wait for the Admin to verify your account.", "डाक्यूमेंट्स अपलोड हो गए हैं। कृपया एडमिन द्वारा वेरिफिकेशन का इंतज़ार करें।")}</p>
           </div>
-          <button onClick={() => onNavigate('my_profile')} className="mt-6 w-full sm:w-auto bg-red-500 hover:bg-red-400 text-black px-8 py-3.5 rounded-2xl transition-all font-bold shadow-[0_0_20px_rgba(239,68,68,0.3)] relative z-10">
-            {!hasBasicInfo || !hasAllDocs ? t("Complete KYC Now", "अभी KYC पूरी करें") : t("Check Profile Status", "प्रोफाइल स्टेटस देखें")}
-          </button>
+          <button onClick={() => onNavigate('my_profile')} className="mt-6 w-full sm:w-auto bg-red-500 hover:bg-red-400 text-black px-8 py-3.5 rounded-2xl transition-all font-bold shadow-[0_0_20px_rgba(239,68,68,0.3)] relative z-10">{!hasBasicInfo || !hasAllDocs ? t("Complete KYC Now", "अभी KYC पूरी करें") : t("Check Profile Status", "प्रोफाइल स्टेटस देखें")}</button>
         </div>
       )}
 
       {/* REQUEST NEW LOAN BUTTON */}
       <div className={`mt-8 relative group ${!isEligibleForLoan ? 'opacity-90' : ''}`}>
         {isEligibleForLoan && <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-cyan-600 rounded-[2.5rem] blur-xl opacity-30 group-hover:opacity-60 transition-opacity duration-500"></div>}
-        <button
-          onClick={() => {
-            if (isEligibleForLoan) {
-              onNavigate('apply');
-            } else {
-              let msg = !hasBasicInfo ? "Please complete your basic profile info." : !hasAllDocs ? "Please upload all 4 KYC documents." : "Wait for Admin to verify your KYC.";
-              let msgHi = !hasBasicInfo ? "कृपया प्रोफाइल में अपनी बेसिक जानकारी भरें।" : !hasAllDocs ? "कृपया सभी 4 KYC डाक्यूमेंट्स अपलोड करें।" : "कृपया एडमिन द्वारा KYC वेरिफिकेशन का इंतज़ार करें।";
-              showAlert(t("Access Denied", "पहुँच वर्जित"), t(msg, msgHi));
-              onNavigate('my_profile');
-            }
-          }}
-          className={`w-full bg-gradient-to-r from-[#161922] to-[#0f1115] border ${isEligibleForLoan ? 'border-white/10 hover:-translate-y-1 hover:border-cyan-500/30' : 'border-red-500/20 bg-red-950/10'} p-8 rounded-[2.5rem] flex flex-col sm:flex-row items-center justify-between transition-all duration-300 transform relative overflow-hidden z-10`}
-        >
+        <button onClick={() => { if (isEligibleForLoan) { onNavigate('apply'); } else { showAlert(t("Access Denied", "पहुँच वर्जित"), t("Complete profile first.", "पहले प्रोफाइल पूरी करें।")); onNavigate('my_profile'); } }} className={`w-full bg-gradient-to-r from-[#161922] to-[#0f1115] border ${isEligibleForLoan ? 'border-white/10 hover:-translate-y-1 hover:border-cyan-500/30' : 'border-red-500/20 bg-red-950/10'} p-8 rounded-[2.5rem] flex flex-col sm:flex-row items-center justify-between transition-all duration-300 transform relative overflow-hidden z-10`}>
           <div className="flex items-center space-x-6 text-left">
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg transition-transform duration-500 ${isEligibleForLoan ? 'bg-gradient-to-br from-indigo-500 to-cyan-500 group-hover:scale-110' : 'bg-red-500/10 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]'}`}>
-              {isEligibleForLoan ? <Plus className="h-8 w-8 text-white" /> : <Lock className="h-7 w-7 text-red-400" />}
-            </div>
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg transition-transform duration-500 ${isEligibleForLoan ? 'bg-gradient-to-br from-indigo-500 to-cyan-500 group-hover:scale-110' : 'bg-red-500/10 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]'}`}>{isEligibleForLoan ? <Plus className="h-8 w-8 text-white" /> : <Lock className="h-7 w-7 text-red-400" />}</div>
             <div>
-              <h2 className={`text-2xl font-black mb-1 tracking-wide ${isEligibleForLoan ? 'text-white' : 'text-red-400'}`}>
-                {isEligibleForLoan ? t("Apply for a New Loan", "नया लोन अप्लाई करें") : t("Loan Feature Locked", "लोन सुविधा लॉक है")}
-              </h2>
-              <p className={`text-sm ${isEligibleForLoan ? 'text-slate-400' : 'text-red-200/70 font-medium'}`}>
-                {isEligibleForLoan ? t("100% digital process with instant admin approval.", "100% डिजिटल प्रोसेस, तुरंत अप्रूवल के साथ।") : t("Verify KYC documents to unlock loan applications.", "लोन शुरू करने के लिए KYC वेरिफिकेशन जरूरी है।")}
-              </p>
+              <h2 className={`text-2xl font-black mb-1 tracking-wide ${isEligibleForLoan ? 'text-white' : 'text-red-400'}`}>{isEligibleForLoan ? t("Apply for a New Loan", "नया लोन अप्लाई करें") : t("Loan Feature Locked", "लोन सुविधा लॉक है")}</h2>
+              <p className={`text-sm ${isEligibleForLoan ? 'text-slate-400' : 'text-red-200/70 font-medium'}`}>{isEligibleForLoan ? t("100% digital process with instant admin approval.", "100% डिजिटल प्रोसेस, तुरंत अप्रूवल के साथ।") : t("Verify KYC documents to unlock loan applications.", "लोन शुरू करने के लिए KYC वेरिफिकेशन जरूरी है।")}</p>
             </div>
           </div>
-          <div className={`mt-6 sm:mt-0 w-12 h-12 border rounded-full flex items-center justify-center transition-colors ${isEligibleForLoan ? 'border-white/10 group-hover:bg-white/10' : 'border-red-500/30 bg-red-500/10'}`}>
-            {isEligibleForLoan ? <ChevronRight className="h-6 w-6 text-slate-300 group-hover:text-white" /> : <Lock className="h-5 w-5 text-red-400" />}
-          </div>
+          <div className={`mt-6 sm:mt-0 w-12 h-12 border rounded-full flex items-center justify-center transition-colors ${isEligibleForLoan ? 'border-white/10 group-hover:bg-white/10' : 'border-red-500/30 bg-red-500/10'}`}>{isEligibleForLoan ? <ChevronRight className="h-6 w-6 text-slate-300 group-hover:text-white" /> : <Lock className="h-5 w-5 text-red-400" />}</div>
         </button>
       </div>
 
       <AIInsightsModal isOpen={aiModal.isOpen} onClose={() => setAiModal({ ...aiModal, isOpen: false })} loading={aiModal.loading} result={aiModal.result} error={aiModal.error} t={t} />
+
+      {/* 🎡 THE SPIN WHEEL MODAL 🎡 */}
+      {showWheel && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-500">
+          <div className="bg-gradient-to-b from-[#161922] to-black border border-amber-500/30 p-8 rounded-[3rem] shadow-[0_0_80px_rgba(245,158,11,0.2)] max-w-sm w-full relative flex flex-col items-center text-center overflow-hidden">
+            <div className="absolute top-0 w-full h-1 bg-gradient-to-r from-transparent via-amber-400 to-transparent"></div>
+            <h2 className="text-3xl font-black text-white mb-2 tracking-wide uppercase flex items-center"><Gift className="h-6 w-6 text-amber-400 mr-2" /> {t("Jackpot!", "जैकपॉट!")}</h2>
+            <p className="text-slate-400 text-sm mb-8">{t("You completed a 7-Day Streak. Spin to win bonus Leader Coins!", "आपने 7 दिन की स्ट्रीक पूरी की है। घुमाएं और जीतें!")}</p>
+            <div className="relative w-48 h-48 mb-8">
+              <div className="absolute inset-0 rounded-full shadow-[0_0_30px_rgba(245,158,11,0.3)] border-4 border-[#161922]" style={{ background: 'conic-gradient(#f59e0b 0% 20%, #ef4444 20% 40%, #8b5cf6 40% 60%, #3b82f6 60% 80%, #10b981 80% 100%)', transform: `rotate(${wheelDegrees}deg)`, transition: isSpinning ? 'transform 3.5s cubic-bezier(0.17, 0.67, 0.12, 0.99)' : 'none' }}><div className="absolute inset-0 border-[8px] border-black/10 rounded-full"></div></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-black rounded-full border-2 border-white z-10 flex items-center justify-center"><div className="w-2 h-2 bg-white rounded-full"></div></div>
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-[16px] border-t-white z-20"></div>
+            </div>
+            {spinResult ? (
+              <div className="animate-in zoom-in duration-500 w-full">
+                <p className="text-amber-400 font-black text-5xl mb-2">+{spinResult} <span className="text-2xl text-amber-500/70">LC</span></p>
+                <p className="text-emerald-400 text-sm font-bold uppercase tracking-widest mb-6">{t("Added to Balance!", "बैलेंस में जुड़ गए!")}</p>
+                <button onClick={closeWheel} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-black px-6 py-4 rounded-2xl font-black uppercase tracking-widest shadow-[0_0_20px_rgba(245,158,11,0.4)] hover:scale-105 transition-transform">{t("Claim & Close", "कलेक्ट करें")}</button>
+              </div>
+            ) : (
+              <button onClick={handleSpin} disabled={isSpinning} className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 text-white px-6 py-4 rounded-2xl font-black uppercase tracking-widest shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transition-transform">{isSpinning ? t("Spinning...", "घूम रहा है...") : t("Spin The Wheel", "चकरी घुमाएं")}</button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
