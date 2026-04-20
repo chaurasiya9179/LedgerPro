@@ -7,45 +7,53 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import {
   Bot, Star, CreditCard, ChevronRight, FileText, Plus, Send, Clock, User,
   Phone, Hash, MapPin, Activity, Upload, Download, PieChart, BarChart,
-  MessageSquare, MessageCircle, Mail, Check, X, UserPlus, Edit, Trash,
-  Bell, Headset, Lock, AlertCircle, Percent, TrendingUp, ShieldCheck, DollarSign, Award, Gift, LineChart, BookOpen, Lightbulb, Flame, Play, Pause, SkipForward, SkipBack, Headphones, Music
+  MessageSquare, MessageCircle, Mail, Check, X, UserPlus, Edit, Trash, Users,
+  Bell, Headset, Lock, AlertCircle, Percent, TrendingUp, ShieldCheck, DollarSign, Award, Gift, LineChart, BookOpen, Lightbulb, Flame, Play, Pause, SkipForward, SkipBack, Headphones, Music, Home
 } from 'lucide-react';
 import { LanguageContext } from '../App';
 import { supabaseUrl, supabaseKey, calculateAccruedInterest, callGeminiAI, calculateTrustScore, getScoreRating } from '../utils';
-import { AIInsightsModal, LoanHistoryModal } from './AdminDashboard';
 
-export function DashboardView({ loans, profile, onNavigate, session, showAlert, onSuccess }) {
+// ==========================================
+// 1. DASHBOARD VIEW (MAIN PAGE)
+// ==========================================
+export function DashboardView({ loans = [], profile, onNavigate, session, showAlert, onSuccess }) {
   const { t, lang } = useContext(LanguageContext);
-  const [aiModal, setAiModal] = useState({ isOpen: false, loading: false, result: '', error: '' });
   
-  // 🕉️ AUTOMATED DAILY CONTENT STATE
+  // --- 1. ALL HOOKS AT THE TOP (TO PREVENT CRASHES) ---
+  const safeSession = session || (localStorage.getItem('leaderpro_session') ? JSON.parse(localStorage.getItem('leaderpro_session')) : null);
+  const userId = safeSession?.user?.id;
+  const accessToken = safeSession?.access_token;
+
+  const [aiModal, setAiModal] = useState({ isOpen: false, loading: false, result: '', error: '' });
+  const [liveProfile, setLiveProfile] = useState(profile);
+  const [isCheckingLock, setIsCheckingLock] = useState(true);
   const [dailyData, setDailyData] = useState(null);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-  // 🎯 QUIZ PLAYED LOGIC
   const todayDate = new Date().toDateString(); 
-  const quizStorageKey = `quiz_played_${session.user.id}`;
+  const quizStorageKey = `quiz_played_${userId}`;
   const dataStorageKey = `daily_bundle_data`;
-  const bonusCoinsKey = `bonus_coins_${session.user.id}`;
-  const streakKey = `quiz_streak_${session.user.id}`;
-  const lastDateKey = `quiz_last_date_${session.user.id}`;
+  const bonusCoinsKey = `bonus_coins_${userId}`;
+  const streakKey = `quiz_streak_${userId}`;
+  const lastDateKey = `quiz_last_date_${userId}`;
 
   const [hasPlayedToday, setHasPlayedToday] = useState(localStorage.getItem(quizStorageKey) === todayDate);
   const [quizStatus, setQuizStatus] = useState(hasPlayedToday ? 'success' : null);
   const [bonusCoins, setBonusCoins] = useState(Number(localStorage.getItem(bonusCoinsKey)) || 0);
   const [streak, setStreak] = useState(Number(localStorage.getItem(streakKey)) || 0);
 
-  // 🎡 SPIN THE WHEEL STATE
   const [showWheel, setShowWheel] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
   const [spinResult, setSpinResult] = useState(null);
   const [wheelDegrees, setWheelDegrees] = useState(0);
 
-  // 🎙️ REAL AUDIO PODCAST PLAYER STATE
+  const [nearbyAdmins, setNearbyAdmins] = useState([]);
+  const [isLinking, setIsLinking] = useState(false);
+
   const podcasts = [
-    { id: 1, title: t("Boost CIBIL Score Fast", "सिबिल स्कोर तेज़ी से कैसे बढ़ाएं?"), duration: "6:12", host: "LeaderPro Studios", color: "from-green-500 to-emerald-700", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
-    { id: 2, title: t("Emergency Fund Basics", "इमरजेंसी फंड क्यों है ज़रूरी?"), duration: "7:05", host: "LeaderPro Studios", color: "from-blue-500 to-indigo-700", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
-    { id: 3, title: t("Dividend Investing 101", "डिविडेंड यील्ड से पैसे कैसे कमाएं?"), duration: "5:45", host: "LeaderPro Studios", color: "from-purple-500 to-pink-700", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3" }
+    { id: 1, title: t("Fundamentals of Personal Finance", "व्यक्तिगत वित्त और निवेश रणनीतियों के मूल सिद्धांत"), duration: "23:05", host: "LeaderPro Studios", color: "from-purple-500 to-pink-700", audioUrl: "https://shortlink.uk/1snF9" },
+    { id: 2, title: t("Emergency Fund Basics", "इमरजेंसी फंड क्यों है ज़रूरी?"), duration: "24:21", host: "LeaderPro Studios", color: "from-blue-500 to-indigo-700", audioUrl: "https://shortlink.uk/1snFw" },
+    { id: 3, title: t("Boost CIBIL Score Fast", "सिबिल स्कोर तेज़ी से कैसे बढ़ाएं?"), duration: "21:41", host: "LeaderPro Studios", color: "from-green-500 to-emerald-700", audioUrl: "https://shortlink.uk/1snFD" },
   ];
   
   const [activePodcast, setActivePodcast] = useState(podcasts[0]);
@@ -54,117 +62,112 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef(null);
 
-  // Play/Pause Audio Element Setup
+  // --- 2. ALL EFFECTS ---
+  useEffect(() => {
+    const fetchFreshProfile = async () => {
+      if(!userId) { setIsCheckingLock(false); return; }
+      try {
+        const res = await fetch(`${supabaseUrl}/rest/v1/profiles?user_id=eq.${userId}`, {
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessToken}` }
+        });
+        const data = await res.json();
+        if (data && data.length > 0) setLiveProfile(data[0]);
+      } catch(e) {}
+      setIsCheckingLock(false);
+    };
+    fetchFreshProfile();
+  }, [userId, accessToken]);
+
   useEffect(() => {
     if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.play().catch(e => console.log("Audio play blocked by browser:", e));
-      } else {
-        audioRef.current.pause();
-      }
+      if (isPlaying) audioRef.current.play().catch(e => console.log("Audio error:", e));
+      else audioRef.current.pause();
     }
   }, [isPlaying, activePodcast]);
 
+  useEffect(() => {
+    const fetchAdmins = async () => {
+      if(!userId || !liveProfile) return;
+      try {
+        const res = await fetch(`${supabaseUrl}/rest/v1/profiles?select=*`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessToken}` } });
+        const allProfiles = await res.json();
+        const adminList = allProfiles.filter(p => p.user_id === p.admin_id);
+        const exactMatchAdmins = adminList.filter(admin => admin.pincode === liveProfile?.pincode);
+        setNearbyAdmins(exactMatchAdmins);
+      } catch (err) { console.error(err); }
+    };
+    if (liveProfile && !liveProfile.admin_id) fetchAdmins();
+  }, [liveProfile, accessToken, userId]);
+
+  useEffect(() => {
+    const loadDailyContent = async () => {
+      if(!userId) return;
+      const savedBundle = JSON.parse(localStorage.getItem(dataStorageKey));
+      if (savedBundle && savedBundle.date === todayDate) { setDailyData(savedBundle.content); return; }
+      setIsLoadingDaily(true);
+      const prompt = `Generate a daily finance bundle in JSON format: 1. shloka (Sanskrit) 2. shloka_hi (Hindi trans) 3. wisdom_text (2 lines) 4. quiz_q (Finance question) 5. opt_a (Wrong) 6. opt_b (Correct). Return ONLY valid JSON.`;
+      try {
+        const response = await callGeminiAI(prompt, "You are a wise financial guru.");
+        const cleanJson = response.replace(/```json|```/g, "").trim();
+        const parsed = JSON.parse(cleanJson);
+        localStorage.setItem(dataStorageKey, JSON.stringify({ date: todayDate, content: parsed }));
+        setDailyData(parsed);
+      } catch (err) {
+        setDailyData({ shloka: "उद्यमेन हि सिध्यन्ति कार्याणि न मनोरथैः।", shloka_hi: "मेहनत से ही काम पूरे होते हैं, केवल इच्छा करने से नहीं।", wisdom_text: "अपने कर्ज़ को चुकाने के लिए छोटे-छोटे कदम उठाएं, सफलता ज़रूर मिलेगी।", quiz_q: "ब्याज बचाने का सबसे अच्छा तरीका क्या है?", opt_a: "देर से पेमेंट करना", opt_b: "समय से पहले मूलधन चुकाना" });
+      } finally { setIsLoadingDaily(false); }
+    };
+    loadDailyContent();
+  }, [todayDate, userId]);
+
+  // --- 3. LOGIC & FUNCTIONS ---
   const togglePlay = (podcast) => {
-    if (activePodcast.id !== podcast.id) {
-      setActivePodcast(podcast);
-      setPlayProgress(0);
-      setCurrentTime(0);
-      setIsPlaying(true);
-    } else {
-      setIsPlaying(!isPlaying);
-    }
+    if (activePodcast.id !== podcast.id) { setActivePodcast(podcast); setPlayProgress(0); setCurrentTime(0); setIsPlaying(true); } 
+    else { setIsPlaying(!isPlaying); }
   };
 
   const handleTimeUpdate = () => {
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
-      if (audioRef.current.duration) {
-        setPlayProgress((audioRef.current.currentTime / audioRef.current.duration) * 100);
-      }
+      if (audioRef.current.duration) setPlayProgress((audioRef.current.currentTime / audioRef.current.duration) * 100);
     }
   };
 
-  const handleAudioEnded = () => {
-    setIsPlaying(false);
-    setPlayProgress(0);
-    setCurrentTime(0);
+  const handleAudioEnded = () => handleSkip('forward');
+  const handleSkip = (direction) => {
+    const currentIndex = podcasts.findIndex(p => p.id === activePodcast.id);
+    let newIndex = direction === 'forward' ? (currentIndex + 1) % podcasts.length : (currentIndex - 1 + podcasts.length) % podcasts.length;
+    setActivePodcast(podcasts[newIndex]); setPlayProgress(0); setCurrentTime(0); setIsPlaying(true);
   };
 
-  const formatTime = (timeInSeconds) => {
-    if (!timeInSeconds || isNaN(timeInSeconds)) return "0:00";
-    const m = Math.floor(timeInSeconds / 60);
-    const s = Math.floor(timeInSeconds % 60).toString().padStart(2, '0');
+  const handleSeek = (e) => {
+    if (!audioRef.current || !audioRef.current.duration) return;
+    const bounds = e.currentTarget.getBoundingClientRect();
+    const percentage = (e.clientX - bounds.left) / bounds.width;
+    const newTime = percentage * audioRef.current.duration;
+    audioRef.current.currentTime = newTime; setCurrentTime(newTime); setPlayProgress(percentage * 100);
+  };
+
+  const formatTime = (tInSec) => {
+    if (!tInSec || isNaN(tInSec)) return "0:00";
+    const m = Math.floor(tInSec / 60); const s = Math.floor(tInSec % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
   };
 
-  // 🤖 FETCH DAILY WISDOM & QUIZ FROM AI
-  useEffect(() => {
-    const loadDailyContent = async () => {
-      const savedBundle = JSON.parse(localStorage.getItem(dataStorageKey));
-      if (savedBundle && savedBundle.date === todayDate) {
-        setDailyData(savedBundle.content);
-        return;
-      }
-      setIsLoadingDaily(true);
-      const prompt = `Generate a daily finance bundle in JSON format:
-      1. shloka: A powerful Sanskrit Shloka about Karma or Discipline.
-      2. shloka_hi: Hindi translation of that shloka.
-      3. wisdom_text: A 2-line motivation based on the shloka.
-      4. quiz_q: A tricky finance question about loans, interest, or savings.
-      5. opt_a: Wrong option.
-      6. opt_b: Correct option.
-      Return ONLY valid JSON.`;
-      try {
-        const response = await callGeminiAI(prompt, "You are a wise financial guru.");
-        const cleanJson = response.replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(cleanJson);
-        const newBundle = { date: todayDate, content: parsed };
-        localStorage.setItem(dataStorageKey, JSON.stringify(newBundle));
-        setDailyData(parsed);
-      } catch (err) {
-        setDailyData({
-          shloka: "उद्यमेन हि सिध्यन्ति कार्याणि न मनोरथैः।",
-          shloka_hi: "मेहनत से ही काम पूरे होते हैं, केवल इच्छा करने से नहीं।",
-          wisdom_text: "अपने कर्ज़ को चुकाने के लिए छोटे-छोटे कदम उठाएं, सफलता ज़रूर मिलेगी।",
-          quiz_q: "ब्याज बचाने का सबसे अच्छा तरीका क्या है?",
-          opt_a: "देर से पेमेंट करना",
-          opt_b: "समय से पहले मूलधन (Principal) चुकाना"
-        });
-      } finally {
-        setIsLoadingDaily(false);
-      }
-    };
-    loadDailyContent();
-  }, [todayDate, session.user.id]);
-
-  // 📊 BASIC STATS LOGIC
-  const activeLoans = loans.filter(l => l.status === 'active');
-  const totalDisbursed = activeLoans.reduce((sum, l) => sum + Number(l.amount || 0), 0);
-  const totalRecovery = activeLoans.reduce((sum, l) => sum + Number(l.recoveredAmount || 0), 0);
-  const totalAccruedInterest = activeLoans.reduce((sum, l) => sum + calculateAccruedInterest(l.amount, l.interestRate, l.createdAt), 0);
-  const netLiability = totalDisbursed + totalAccruedInterest - totalRecovery;
-
-  // 🪙 TRUST SCORE & COINS LOGIC
-  const score = calculateTrustScore(loans);
-  const rating = getScoreRating(score);
-  const baseLeaderCoins = (loans.length > 0 && score > 400) ? (score - 400) * 10 : 0;
-  const leaderCoins = baseLeaderCoins + bonusCoins;
-
-  // 📈 WEALTH TRACKER LOGIC
-  const totalSavedInterest = loans.reduce((sum, l) => {
-    if (l.interestRate < 24) {
-      const savedRate = 24 - l.interestRate;
-      return sum + (Number(l.amount) * (savedRate / 100));
-    }
-    return sum;
-  }, 0);
-  const projectedWealth = Math.round(totalSavedInterest * Math.pow(1.12, 5));
-
-  const hasBasicInfo = profile && profile.full_name && profile.phone;
-  const hasAllDocs = profile && profile.aadhar_front_url && profile.aadhar_back_url && profile.pan_url && profile.selfie_url;
-  const isVerified = profile && profile.kyc_status === 'Verified';
-  const isEligibleForLoan = hasBasicInfo && hasAllDocs && isVerified;
+  const handleSelectAdmin = async (admin) => {
+    setIsLinking(true);
+    try {
+      const res = await fetch(`${supabaseUrl}/rest/v1/profiles?user_id=eq.${userId}`, {
+        method: 'PATCH',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ admin_id: admin.user_id })
+      });
+      if (!res.ok) throw new Error("Sync failed");
+      showAlert(t("Success", "सफलता"), t(`Synced with ${admin.full_name}! Waiting for their verification.`, `${admin.full_name} के साथ जुड़ गए! अब उनके वेरिफिकेशन का इंतज़ार करें।`));
+      if (onSuccess) onSuccess(); 
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err) { showAlert(t("Error", "त्रुटि"), t("Linking failed.", "लिंकिंग विफल रही।")); } 
+    finally { setIsLinking(false); }
+  };
 
   const handleAIAnalysis = async () => {
     setAiModal({ isOpen: true, loading: true, result: '', error: '' });
@@ -174,83 +177,144 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
     try {
       const response = await callGeminiAI(promptText, sysInst);
       setAiModal({ isOpen: true, loading: false, result: response, error: '' });
-    } catch (e) {
-      setAiModal({ isOpen: true, loading: false, result: '', error: t('AI Analysis failed.', 'AI विश्लेषण विफल हो गया।') });
-    }
+    } catch (e) { setAiModal({ isOpen: true, loading: false, result: '', error: t('AI Analysis failed.', 'AI विश्लेषण विफल हो गया।') }); }
   };
 
-  // 🔥 HANDLE STREAK & QUIZ
   const handleQuizAnswer = (isCorrect) => {
     if (hasPlayedToday) return; 
     let newStreak = streak;
     const lastDatePlayed = localStorage.getItem(lastDateKey);
-    const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
+    if (lastDatePlayed === new Date(Date.now() - 86400000).toDateString()) newStreak += 1; 
+    else if (lastDatePlayed !== todayDate) newStreak = 1; 
     
-    if (lastDatePlayed === yesterdayStr) {
-      newStreak += 1; 
-    } else if (lastDatePlayed !== todayDate) {
-      newStreak = 1; 
-    }
-    
-    setStreak(newStreak);
-    localStorage.setItem(streakKey, newStreak);
-    localStorage.setItem(lastDateKey, todayDate);
-
-    let currentBonusCoins = bonusCoins;
+    setStreak(newStreak); localStorage.setItem(streakKey, newStreak); localStorage.setItem(lastDateKey, todayDate);
     if (isCorrect) {
-      setQuizStatus('success');
-      currentBonusCoins += 10;
-      setBonusCoins(currentBonusCoins);
-      localStorage.setItem(bonusCoinsKey, currentBonusCoins); 
-    } else {
-      setQuizStatus('error');
-    }
-    localStorage.setItem(quizStorageKey, todayDate); 
-    setHasPlayedToday(true);
-
-    if (newStreak > 0 && newStreak % 1 === 0) { // Testing ke liye 1 rakha hai, baad me 7 kar dena
-      setTimeout(() => {
-        setShowWheel(true);
-      }, 1500); 
-    }
+      setQuizStatus('success'); const finalCoins = bonusCoins + 10; setBonusCoins(finalCoins); localStorage.setItem(bonusCoinsKey, finalCoins); 
+    } else { setQuizStatus('error'); }
+    localStorage.setItem(quizStorageKey, todayDate); setHasPlayedToday(true);
+    if (newStreak > 0 && newStreak % 1 === 0) setTimeout(() => { setShowWheel(true); }, 1500); 
   };
 
   const handleSpin = () => {
-    setIsSpinning(true);
-    const spinDegrees = 1800 + Math.floor(Math.random() * 360); 
-    setWheelDegrees(spinDegrees);
+    setIsSpinning(true); setWheelDegrees(1800 + Math.floor(Math.random() * 360)); 
     setTimeout(() => {
-       const rewards = [50, 100, 150, 200, 500];
-       const won = rewards[Math.floor(Math.random() * rewards.length)];
-       setSpinResult(won);
-       const finalCoins = bonusCoins + won;
-       setBonusCoins(finalCoins);
-       localStorage.setItem(bonusCoinsKey, finalCoins);
-       setIsSpinning(false);
+       const won = [50, 100, 150, 200, 500][Math.floor(Math.random() * 5)];
+       setSpinResult(won); const finalCoins = bonusCoins + won; setBonusCoins(finalCoins); localStorage.setItem(bonusCoinsKey, finalCoins); setIsSpinning(false);
     }, 3500); 
   };
+  const closeWheel = () => { setShowWheel(false); setSpinResult(null); setWheelDegrees(0); };
 
-  const closeWheel = () => {
-    setShowWheel(false);
-    setSpinResult(null);
-    setWheelDegrees(0);
-  };
+  // Calculations
+  const activeLoans = loans.filter(l => l.status === 'active');
+  const totalDisbursed = activeLoans.reduce((sum, l) => sum + Number(l.amount || 0), 0);
+  const totalRecovery = activeLoans.reduce((sum, l) => sum + Number(l.recoveredAmount || 0), 0);
+  const totalAccruedInterest = activeLoans.reduce((sum, l) => sum + calculateAccruedInterest(l.amount, l.interestRate, l.createdAt), 0);
+  const netLiability = totalDisbursed + totalAccruedInterest - totalRecovery;
+  const score = calculateTrustScore(loans);
+  const rating = getScoreRating(score);
+  const baseLeaderCoins = (loans.length > 0 && score > 400) ? (score - 400) * 10 : 0;
+  const leaderCoins = baseLeaderCoins + bonusCoins;
+  const totalSavedInterest = loans.reduce((sum, l) => {
+    if (l.interestRate < 24) return sum + (Number(l.amount) * ((24 - l.interestRate) / 100));
+    return sum;
+  }, 0);
+  const projectedWealth = Math.round(totalSavedInterest * Math.pow(1.12, 5));
 
-  const firstName = profile?.full_name ? profile.full_name.split(' ')[0] : '';
+  const hasBasicInfo = liveProfile && liveProfile.full_name && liveProfile.phone && liveProfile.address;
+  const hasAllDocs = liveProfile && liveProfile.aadhar_front_url && liveProfile.aadhar_back_url && liveProfile.pan_url && liveProfile.selfie_url;
+  const isProfileComplete = hasBasicInfo && hasAllDocs;
+  const isSyncedWithAdmin = !!liveProfile?.admin_id;
+  const isVerifiedByAdmin = liveProfile?.kyc_status === 'Verified';
+
+  const firstName = liveProfile?.full_name ? liveProfile.full_name.split(' ')[0] : '';
   const displayTitle = lang === 'en' ? (firstName ? `${firstName}'s` : "Your") : (firstName ? `${firstName} का` : "आपका");
 
+  // --- 4. EARLY RETURNS FOR LOCKS (MUST BE AFTER ALL HOOKS) ---
+  if (isCheckingLock) {
+    return <div className="flex justify-center items-center min-h-[60vh]"><Activity className="animate-spin h-12 w-12 text-cyan-500" /></div>;
+  }
+
+  if (!isProfileComplete) {
+    return (
+      <div className="relative space-y-6 animate-in fade-in duration-1000 pb-10">
+         <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-red-600/10 blur-[150px] rounded-full pointer-events-none -z-10"></div>
+         <div className="bg-amber-500/10 border border-amber-500/30 p-8 rounded-[2.5rem] text-center mt-6 backdrop-blur-md shadow-xl">
+            <Lock className="h-12 w-12 text-amber-400 mx-auto mb-4 animate-pulse" />
+            <h3 className="text-2xl md:text-3xl font-black text-white tracking-wide mb-2">{t("Step 1: Complete Your KYC", "स्टेप 1: अपनी KYC पूरी करें")}</h3>
+            <p className="text-slate-400 text-sm max-w-lg mx-auto">{t("Please fill all details and upload documents below to proceed.", "कृपया नीचे सारी जानकारी भरें और डाक्यूमेंट्स अपलोड करें।")}</p>
+            <button onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })} className="mt-6 inline-flex items-center justify-center space-x-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-black px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:scale-105">
+               <User className="h-5 w-5" /> <span>{t("Fill Profile Now", "अभी प्रोफाइल भरें")}</span>
+            </button>
+         </div>
+         <div className="mt-8 transition-opacity">
+            <UserMyProfileView profile={liveProfile} session={session} onSave={onSuccess} showAlert={showAlert} />
+         </div>
+      </div>
+    );
+  }
+
+  if (isProfileComplete && !isSyncedWithAdmin) {
+     return (
+       <div className="relative space-y-6 animate-in fade-in duration-1000 pb-10">
+         <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-blue-600/10 blur-[150px] rounded-full pointer-events-none -z-10"></div>
+         <div className="bg-blue-500/10 border border-blue-500/30 p-8 rounded-[2.5rem] text-center mt-6 backdrop-blur-md shadow-xl">
+            <Users className="h-12 w-12 text-blue-400 mx-auto mb-4 animate-bounce" />
+            <h3 className="text-2xl md:text-3xl font-black text-white tracking-wide mb-2">{t("Step 2: Choose Your Branch", "स्टेप 2: अपनी ब्रांच चुनें")}</h3>
+            <p className="text-slate-400 text-sm max-w-lg mx-auto">{t("Your profile is saved. Now select your area Branch Manager so they can verify your documents.", "आपकी प्रोफाइल सेव हो गई है। अब अपने एरिया का ब्रांच मैनेजर चुनें ताकि वे आपके डाक्यूमेंट्स वेरीफाई कर सकें।")}</p>
+         </div>
+         <div className="bg-[#111318] border border-white/5 rounded-[2.5rem] p-8 relative overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white flex items-center"><MapPin className="h-5 w-5 mr-2 text-cyan-400" /> {t("Managers in Pincode:", "पिनकोड में मैनेजर:")} {liveProfile.pincode}</h2>
+            </div>
+            {nearbyAdmins.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {nearbyAdmins.map((admin) => (
+                  <div key={admin.user_id} className="bg-gradient-to-br from-white/[0.03] to-black/40 border border-white/10 p-5 rounded-3xl group hover:border-cyan-500/40 hover:bg-cyan-950/20 transition-all">
+                    <div className="flex items-center space-x-4 mb-4">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center text-xl font-black text-white border border-white/10 group-hover:from-cyan-600 transition-all">{admin.full_name?.charAt(0) || <User className="h-5 w-5" />}</div>
+                      <div><h4 className="font-bold text-white group-hover:text-cyan-400 transition-colors">{admin.full_name}</h4><p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">ID: {admin.user_id.substring(0, 13)}...</p></div>
+                    </div>
+                    <div className="space-y-2 mb-5 text-xs text-slate-400"><div className="flex items-start"><MapPin className="h-3 w-3 mr-2 mt-0.5 text-slate-500 shrink-0" /> <span className="line-clamp-2">{admin.address || "Address pending"}</span></div></div>
+                    <button onClick={() => handleSelectAdmin(admin)} disabled={isLinking} className="w-full py-3 bg-white/5 hover:bg-cyan-500 hover:text-black rounded-xl text-xs font-black uppercase tracking-widest border border-white/10 hover:border-cyan-400 transition-all flex items-center justify-center space-x-2">
+                      {isLinking ? t("Linking...", "जोड़ रहे हैं...") : <><Check className="h-3.5 w-3.5" /> <span>{t("Select & Link", "चुनें और जुड़ें")}</span></>}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-10 border border-red-500/20 rounded-3xl bg-red-950/10">
+                <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
+                <p className="text-white font-bold">{t(`No Branch Manager found in Pincode ${liveProfile.pincode}`, `आपके पिनकोड ${liveProfile.pincode} पर अभी कोई ब्रांच मैनेजर नहीं है।`)}</p>
+              </div>
+            )}
+         </div>
+       </div>
+     )
+  }
+
+  if (isProfileComplete && isSyncedWithAdmin && !isVerifiedByAdmin) {
+    return (
+      <div className="relative space-y-6 animate-in fade-in duration-1000 pb-10 flex flex-col items-center justify-center min-h-[70vh]">
+         <div className="absolute top-1/2 right-1/4 w-[500px] h-[500px] bg-purple-600/10 blur-[150px] rounded-full pointer-events-none -z-10 -translate-y-1/2"></div>
+         <div className="bg-gradient-to-br from-indigo-950/50 to-black/80 border border-indigo-500/30 p-10 rounded-[3rem] text-center backdrop-blur-md shadow-2xl max-w-lg w-full">
+            <div className="relative mx-auto w-24 h-24 mb-6">
+               <div className="absolute inset-0 bg-indigo-500/20 rounded-full animate-ping"></div>
+               <div className="absolute inset-0 flex items-center justify-center bg-indigo-500/10 border-2 border-indigo-500/50 rounded-full"><Clock className="h-10 w-10 text-indigo-400" /></div>
+            </div>
+            <h3 className="text-2xl md:text-3xl font-black text-white tracking-wide mb-3">{t("Verification Pending", "वेरिफिकेशन पेंडिंग है")}</h3>
+            <p className="text-slate-300 text-sm mb-6 leading-relaxed">{t("Your profile has been submitted to your Branch Manager. Please wait while they review your KYC documents.", "आपकी प्रोफाइल ब्रांच मैनेजर को भेज दी गई है। कृपया उनके द्वारा डाक्यूमेंट्स चेक करने का इंतज़ार करें।")}</p>
+            <div className="bg-black/50 border border-white/5 p-4 rounded-2xl flex items-center justify-center space-x-3 text-sm text-slate-400">
+               <ShieldCheck className="h-5 w-5 text-indigo-400" /><span>{t("Dashboard will unlock automatically.", "डैशबोर्ड अपने आप खुल जाएगा।")}</span>
+            </div>
+         </div>
+      </div>
+    );
+  }
+
+  // --- 5. MAIN DASHBOARD RENDER ---
   return (
     <div className="relative space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-1000 pb-10">
-      
-      {/* 🎵 Hidden Audio Element for actual sound playback 🎵 */}
-      <audio 
-        ref={audioRef} 
-        src={activePodcast.audioUrl} 
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={handleAudioEnded}
-        className="hidden"
-      />
-
+      <audio ref={audioRef} src={activePodcast.audioUrl} onTimeUpdate={handleTimeUpdate} onEnded={handleAudioEnded} className="hidden" />
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-600/10 blur-[120px] rounded-full pointer-events-none -z-10"></div>
       
       <header className="mb-4 flex flex-col md:flex-row md:items-end justify-between gap-6 pt-4">
@@ -294,12 +358,10 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
 
       <UserVisualAnalytics loans={loans} t={t} />
 
-      {/* 🎙️ LEADERPRO SHORTS (WITH REAL AUDIO) 🎙️ */}
+      {/* 🎙️ LEADERPRO SHORTS */}
       <div className="bg-[#111318] border border-white/5 rounded-[2.5rem] shadow-2xl relative overflow-hidden mt-8 group hover:border-white/10 transition-colors">
         <div className={`absolute top-0 left-0 w-full h-32 bg-gradient-to-b ${activePodcast.color} opacity-20 blur-3xl pointer-events-none transition-colors duration-1000`}></div>
-        
         <div className="p-6 md:p-8 relative z-10 flex flex-col md:flex-row gap-8 items-center">
-          {/* Currently Playing Art */}
           <div className="w-full md:w-1/3 flex flex-col items-center shrink-0">
             <div className={`w-40 h-40 rounded-3xl bg-gradient-to-br ${activePodcast.color} flex items-center justify-center shadow-2xl mb-4 relative overflow-hidden group-hover:scale-105 transition-transform duration-500`}>
               {isPlaying && <div className="absolute inset-0 bg-white/10 animate-pulse"></div>}
@@ -307,48 +369,26 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
             </div>
             <h3 className="text-xl font-bold text-white text-center leading-tight mb-1">{activePodcast.title}</h3>
             <p className="text-sm text-slate-400 text-center flex items-center"><User className="h-3 w-3 mr-1"/> By {activePodcast.host}</p>
-            
-            {/* Player Controls */}
             <div className="flex items-center space-x-6 mt-6">
-              <button className="text-slate-400 hover:text-white transition-colors"><SkipBack className="h-6 w-6" /></button>
-              <button onClick={() => togglePlay(activePodcast)} className="w-14 h-14 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-                {isPlaying ? <Pause className="h-7 w-7" /> : <Play className="h-7 w-7 ml-1" />}
-              </button>
-              <button className="text-slate-400 hover:text-white transition-colors"><SkipForward className="h-6 w-6" /></button>
+              <button onClick={() => handleSkip('backward')} className="text-slate-400 hover:text-white transition-colors"><SkipBack className="h-6 w-6" /></button>
+              <button onClick={() => togglePlay(activePodcast)} className="w-14 h-14 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-[0_0_20px_rgba(255,255,255,0.3)]">{isPlaying ? <Pause className="h-7 w-7" /> : <Play className="h-7 w-7 ml-1" />}</button>
+              <button onClick={() => handleSkip('forward')} className="text-slate-400 hover:text-white transition-colors"><SkipForward className="h-6 w-6" /></button>
             </div>
-            {/* Real Progress Bar */}
             <div className="w-full mt-5 flex items-center space-x-3 px-2">
               <span className="text-xs text-slate-500 font-mono">{formatTime(currentTime)}</span>
-              <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden cursor-pointer">
-                <div className="h-full bg-white transition-all duration-300 ease-linear" style={{ width: `${playProgress}%` }}></div>
+              <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden cursor-pointer relative group/seekbar" onClick={handleSeek}>
+                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover/seekbar:opacity-100 transition-opacity"></div>
+                <div className="h-full bg-white transition-all duration-100 ease-linear relative" style={{ width: `${playProgress}%` }}><div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow-lg scale-0 group-hover/seekbar:scale-100 transition-transform"></div></div>
               </div>
               <span className="text-xs text-slate-500 font-mono">{activePodcast.duration}</span>
             </div>
           </div>
-
-          {/* Playlist */}
           <div className="w-full md:w-2/3 border-t md:border-t-0 md:border-l border-white/10 pt-6 md:pt-0 md:pl-8">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-lg font-bold text-white tracking-wide flex items-center"><Music className="h-5 w-5 mr-2 text-indigo-400"/> {t("LeaderPro Shorts", "लीडरप्रो शॉर्ट्स")}</h4>
-              <span className="text-[10px] uppercase tracking-widest font-bold bg-indigo-500/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">Podcast</span>
-            </div>
-            
+            <div className="flex items-center justify-between mb-4"><h4 className="text-lg font-bold text-white tracking-wide flex items-center"><Music className="h-5 w-5 mr-2 text-indigo-400"/> {t("LeaderPro Shorts", "लीडरप्रो शॉर्ट्स")}</h4><span className="text-[10px] uppercase tracking-widest font-bold bg-indigo-500/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">Podcast</span></div>
             <div className="space-y-3">
               {podcasts.map((podcast) => (
-                <div 
-                  key={podcast.id} 
-                  onClick={() => togglePlay(podcast)}
-                  className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all ${activePodcast.id === podcast.id ? 'bg-white/10 border border-white/20 shadow-inner' : 'bg-black/30 border border-white/5 hover:bg-white/5'}`}
-                >
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center shrink-0">
-                      {activePodcast.id === podcast.id && isPlaying ? <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div> : <Play className="h-4 w-4 text-slate-400 ml-0.5" />}
-                    </div>
-                    <div>
-                      <p className={`font-bold text-sm ${activePodcast.id === podcast.id ? 'text-white' : 'text-slate-300'}`}>{podcast.title}</p>
-                      <p className="text-xs text-slate-500">{podcast.host}</p>
-                    </div>
-                  </div>
+                <div key={podcast.id} onClick={() => togglePlay(podcast)} className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all ${activePodcast.id === podcast.id ? 'bg-white/10 border border-white/20 shadow-inner' : 'bg-black/30 border border-white/5 hover:bg-white/5'}`}>
+                  <div className="flex items-center space-x-4"><div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center shrink-0">{activePodcast.id === podcast.id && isPlaying ? <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div> : <Play className="h-4 w-4 text-slate-400 ml-0.5" />}</div><div><p className={`font-bold text-sm ${activePodcast.id === podcast.id ? 'text-white' : 'text-slate-300'}`}>{podcast.title}</p><p className="text-xs text-slate-500">{podcast.host}</p></div></div>
                   <span className="text-xs font-mono text-slate-500">{podcast.duration}</span>
                 </div>
               ))}
@@ -357,118 +397,43 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
         </div>
       </div>
 
-      {/* 🕉️ AUTOMATED DAILY WISDOM & LEARN SECTION (WITH STREAK) 🕉️ */}
+      {/* 🕉️ AUTOMATED DAILY WISDOM */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 mt-6 relative z-10">
         <div className="bg-gradient-to-br from-orange-950/50 via-[#111318] to-[#111318] border border-orange-500/20 p-6 md:p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group min-h-[220px]">
            {isLoadingDaily && <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20 backdrop-blur-sm"><Activity className="animate-spin text-orange-400" /></div>}
            <div className="flex items-center justify-between mb-6">
-             <div className="flex items-center space-x-3">
-               <div className="p-2.5 bg-orange-500/10 rounded-xl border border-orange-500/20"><BookOpen className="h-5 w-5 text-orange-400" /></div>
-               <h3 className="text-xl font-bold text-white tracking-wide">{t("Daily Wisdom", "आज का सुविचार")}</h3>
-             </div>
-             {streak > 0 && (
-                <div className="flex items-center space-x-1.5 bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 px-3 py-1.5 rounded-full shadow-[0_0_15px_rgba(249,115,22,0.2)] animate-in slide-in-from-right duration-500">
-                  <Flame className={`h-4 w-4 ${hasPlayedToday ? 'text-orange-400 animate-pulse' : 'text-slate-400'}`} />
-                  <span className="text-xs font-black text-orange-400 uppercase tracking-widest">{streak} {t("Day Streak", "दिन की स्ट्रीक")}</span>
-                </div>
-             )}
+             <div className="flex items-center space-x-3"><div className="p-2.5 bg-orange-500/10 rounded-xl border border-orange-500/20"><BookOpen className="h-5 w-5 text-orange-400" /></div><h3 className="text-xl font-bold text-white tracking-wide">{t("Daily Wisdom", "आज का सुविचार")}</h3></div>
+             {streak > 0 && (<div className="flex items-center space-x-1.5 bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 px-3 py-1.5 rounded-full shadow-[0_0_15px_rgba(249,115,22,0.2)] animate-in slide-in-from-right duration-500"><Flame className={`h-4 w-4 ${hasPlayedToday ? 'text-orange-400 animate-pulse' : 'text-slate-400'}`} /><span className="text-xs font-black text-orange-400 uppercase tracking-widest">{streak} {t("Day Streak", "दिन की स्ट्रीक")}</span></div>)}
            </div>
-           {dailyData && (
-             <div className="animate-in fade-in duration-700">
-               <p className="text-orange-300 font-bold text-xl md:text-2xl mb-4 leading-relaxed font-serif">"{dailyData.shloka}"</p>
-               <p className="text-slate-300 text-sm mb-2 font-medium italic">- {dailyData.shloka_hi}</p>
-               <p className="text-slate-500 text-xs leading-relaxed">{dailyData.wisdom_text}</p>
-             </div>
-           )}
+           {dailyData && (<div className="animate-in fade-in duration-700"><p className="text-orange-300 font-bold text-xl md:text-2xl mb-4 leading-relaxed font-serif">"{dailyData.shloka}"</p><p className="text-slate-300 text-sm mb-2 font-medium italic">- {dailyData.shloka_hi}</p><p className="text-slate-500 text-xs leading-relaxed">{dailyData.wisdom_text}</p></div>)}
         </div>
-
         <div className="bg-gradient-to-br from-indigo-950/40 to-[#111318] border border-indigo-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-             <div className="flex items-center space-x-3">
-               <div className="p-2.5 bg-indigo-500/10 rounded-xl border border-indigo-500/30"><Lightbulb className="h-5 w-5 text-indigo-400" /></div>
-               <h3 className="text-xl font-bold text-white tracking-wide">{t("Learn & Earn", "सीखें और कमाएं")}</h3>
-             </div>
-             <div className="bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/30 text-amber-400 font-bold text-xs flex items-center shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-               <Gift className="h-3.5 w-3.5 mr-1.5" /> {t("Win 10 LC", "10 LC जीतें")}
-             </div>
-          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4"><div className="flex items-center space-x-3"><div className="p-2.5 bg-indigo-500/10 rounded-xl border border-indigo-500/30"><Lightbulb className="h-5 w-5 text-indigo-400" /></div><h3 className="text-xl font-bold text-white tracking-wide">{t("Learn & Earn", "सीखें और कमाएं")}</h3></div><div className="bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/30 text-amber-400 font-bold text-xs flex items-center shadow-[0_0_10px_rgba(245,158,11,0.2)]"><Gift className="h-3.5 w-3.5 mr-1.5" /> {t("Win 10 LC", "10 LC जीतें")}</div></div>
           <div className="relative min-h-[140px] flex flex-col justify-center">
-            {isLoadingDaily ? <Activity className="animate-spin mx-auto text-indigo-400" /> :
-            quizStatus === 'success' ? (
-               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-5 text-center animate-in zoom-in">
-                 <Check className="h-10 w-10 text-emerald-400 mx-auto mb-2"/>
-                 <p className="text-emerald-200 text-sm font-bold">{t("Already Earned for Today! See you tomorrow.", "आज का इनाम मिल गया! कल मिलते हैं।")}</p>
-                 {streak % 7 !== 0 && <p className="text-[10px] text-emerald-500/80 mt-2 font-bold uppercase tracking-widest">{7 - (streak % 7)} {t("days to Jackpot!", "दिन बाद जैकपॉट!")}</p>}
-               </div>
-            ) : quizStatus === 'error' ? (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5 text-center">
-                 <X className="h-10 w-10 text-red-400 mx-auto mb-2"/>
-                 <p className="text-red-200 text-sm">{t("Better luck tomorrow!", "कल फिर कोशिश करें!")}</p>
-              </div>
-            ) : dailyData && (
-               <div>
-                 <p className="text-sm font-bold text-slate-300 mb-5">{dailyData.quiz_q}</p>
-                 <div className="grid grid-cols-1 gap-3">
-                    <button onClick={() => handleQuizAnswer(false)} className="text-left p-4 rounded-xl border border-white/5 bg-black/40 hover:bg-white/5 text-slate-400 transition-all text-sm">{dailyData.opt_a}</button>
-                    <button onClick={() => handleQuizAnswer(true)} className="text-left p-4 rounded-xl border border-white/5 bg-black/40 hover:bg-indigo-500/10 text-slate-400 transition-all text-sm">{dailyData.opt_b}</button>
-                 </div>
-               </div>
-            )}
+            {isLoadingDaily ? <Activity className="animate-spin mx-auto text-indigo-400" /> : quizStatus === 'success' ? (<div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-5 text-center animate-in zoom-in"><Check className="h-10 w-10 text-emerald-400 mx-auto mb-2"/><p className="text-emerald-200 text-sm font-bold">{t("Already Earned for Today! See you tomorrow.", "आज का इनाम मिल गया! कल मिलते हैं।")}</p></div>) : quizStatus === 'error' ? (<div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5 text-center"><X className="h-10 w-10 text-red-400 mx-auto mb-2"/><p className="text-red-200 text-sm">{t("Better luck tomorrow!", "कल फिर कोशिश करें!")}</p></div>) : dailyData && (<div><p className="text-sm font-bold text-slate-300 mb-5">{dailyData.quiz_q}</p><div className="grid grid-cols-1 gap-3"><button onClick={() => handleQuizAnswer(false)} className="text-left p-4 rounded-xl border border-white/5 bg-black/40 hover:bg-white/5 text-slate-400 transition-all text-sm">{dailyData.opt_a}</button><button onClick={() => handleQuizAnswer(true)} className="text-left p-4 rounded-xl border border-white/5 bg-black/40 hover:bg-indigo-500/10 text-slate-400 transition-all text-sm">{dailyData.opt_b}</button></div></div>)}
           </div>
         </div>
       </div>
 
-      {/* 📈 SMART WEALTH TRACKER 📈 */}
+      {/* 📈 SMART WEALTH TRACKER */}
       <div className="bg-gradient-to-br from-emerald-950/40 to-[#05100a] border border-emerald-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-[0_0_40px_rgba(16,185,129,0.1)] relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-8 mb-8 group hover:border-emerald-500/50 transition-all">
         <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-emerald-500/10 blur-[50px] pointer-events-none"></div>
-        <div className="flex-1 w-full relative z-10">
-          <div className="flex items-center space-x-3 mb-4">
-             <div className="p-2.5 bg-emerald-500/20 rounded-xl border border-emerald-500/30"><LineChart className="h-6 w-6 text-emerald-400" /></div>
-             <h2 className="text-2xl font-bold text-white tracking-wide">{t("Smart Wealth Tracker", "स्मार्ट वेल्थ ट्रैकर")}</h2>
-          </div>
-          <p className="text-sm text-slate-400 leading-relaxed mb-6">{t("Don't just borrow, start building wealth! Here is how much you've saved by using Leader Coins to reduce your interest.", "सिर्फ कर्ज़ मत लीजिए, वेल्थ बनाना शुरू कीजिए! देखिए लीडर कॉइन्स का इस्तेमाल करके आपने ब्याज में कितने पैसे बचाए हैं।")}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-             <div className="bg-black/40 p-5 rounded-2xl border border-white/5 border-l-2 border-l-emerald-500">
-               <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t("Saved on Interest", "ब्याज पर बचाए")}</p>
-               <p className="text-2xl font-black text-emerald-400">₹{totalSavedInterest.toLocaleString('en-IN')}</p>
-             </div>
-             <div className="bg-black/40 p-5 rounded-2xl border border-white/5 border-l-2 border-l-cyan-500">
-               <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t("Value after 5 Years", "5 साल बाद की वैल्यू")}</p>
-               <p className="text-2xl font-black text-cyan-400">₹{projectedWealth.toLocaleString('en-IN')}</p>
-             </div>
-          </div>
-        </div>
-        <div className="w-full lg:w-1/3 bg-emerald-950/30 p-6 rounded-3xl border border-emerald-500/20 shadow-inner relative z-10 text-center lg:text-left">
-           <div className="flex justify-center lg:justify-start mb-3"><TrendingUp className="h-8 w-8 text-emerald-400" /></div>
-           <h4 className="text-white font-bold text-lg mb-2">{t("The Power of Compounding", "कंपाउंडिंग की ताकत")}</h4>
-           <p className="text-xs text-emerald-200/70 leading-relaxed">{t("If you invest your saved ₹" + Math.floor(totalSavedInterest) + " in a High Dividend Yield portfolio or equity SIP, it could grow to ₹" + projectedWealth + " in just 5 years at an expected 12% return!", "अगर आप अपने बचाए हुए ₹" + Math.floor(totalSavedInterest) + " को किसी हाई-डिविडेंड यील्ड (High Dividend Yield) पोर्टफोलियो या SIP में लगाते हैं, तो 12% के अनुमानित रिटर्न के साथ यह 5 साल में ₹" + projectedWealth + " हो सकता है!")}</p>
-        </div>
+        <div className="flex-1 w-full relative z-10"><div className="flex items-center space-x-3 mb-4"><div className="p-2.5 bg-emerald-500/20 rounded-xl border border-emerald-500/30"><LineChart className="h-6 w-6 text-emerald-400" /></div><h2 className="text-2xl font-bold text-white tracking-wide">{t("Smart Wealth Tracker", "स्मार्ट वेल्थ ट्रैकर")}</h2></div><p className="text-sm text-slate-400 leading-relaxed mb-6">{t("Don't just borrow, start building wealth! Here is how much you've saved by using Leader Coins to reduce your interest.", "सिर्फ कर्ज़ मत लीजिए, वेल्थ बनाना शुरू कीजिए! देखिए लीडर कॉइन्स का इस्तेमाल करके आपने ब्याज में कितने पैसे बचाए हैं।")}</p><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div className="bg-black/40 p-5 rounded-2xl border border-white/5 border-l-2 border-l-emerald-500"><p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t("Saved on Interest", "ब्याज पर बचाए")}</p><p className="text-2xl font-black text-emerald-400">₹{totalSavedInterest.toLocaleString('en-IN')}</p></div><div className="bg-black/40 p-5 rounded-2xl border border-white/5 border-l-2 border-l-cyan-500"><p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t("Value after 5 Years", "5 साल बाद की वैल्यू")}</p><p className="text-2xl font-black text-cyan-400">₹{projectedWealth.toLocaleString('en-IN')}</p></div></div></div>
+        <div className="w-full lg:w-1/3 bg-emerald-950/30 p-6 rounded-3xl border border-emerald-500/20 shadow-inner relative z-10 text-center lg:text-left"><div className="flex justify-center lg:justify-start mb-3"><TrendingUp className="h-8 w-8 text-emerald-400" /></div><h4 className="text-white font-bold text-lg mb-2">{t("The Power of Compounding", "कंपाउंडिंग की ताकत")}</h4><p className="text-xs text-emerald-200/70 leading-relaxed">{t("If you invest your saved ₹" + Math.floor(totalSavedInterest) + " in a High Dividend Yield portfolio or equity SIP, it could grow to ₹" + projectedWealth + " in just 5 years at an expected 12% return!", "अगर आप अपने बचाए हुए ₹" + Math.floor(totalSavedInterest) + " को किसी हाई-डिविडेंड यील्ड पोर्टफोलियो या SIP में लगाते हैं, तो 12% के अनुमानित रिटर्न के साथ यह 5 साल में ₹" + projectedWealth + " हो सकता है!")}</p></div>
       </div>
 
-      {/* PROFILE STATUS BANNER */}
-      {!isEligibleForLoan && (
-        <div className="bg-gradient-to-br from-red-950/40 to-black/40 border border-red-500/30 p-6 md:p-8 rounded-[2.5rem] shadow-lg mb-8 relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-64 h-64 bg-red-500/10 blur-[50px] pointer-events-none"></div>
-          <div className="relative z-10">
-            <h2 className="text-2xl font-bold text-red-400 flex items-center gap-3"><AlertCircle className="h-7 w-7" /> {!hasBasicInfo ? t("Profile Incomplete", "प्रोफाइल अधूरी है") : !hasAllDocs ? t("KYC Documents Missing", "KYC डाक्यूमेंट्स बाकी हैं") : t("Verification Pending", "वेरिफिकेशन पेंडिंग है")}</h2>
-            <p className="text-sm text-red-200/70 mt-3 leading-relaxed">{!hasBasicInfo ? t("Please fill your Name and Phone in profile to start.", "लोन शुरू करने के लिए कृपया अपना नाम और फोन नंबर भरें।") : !hasAllDocs ? t("You must upload all 4 KYC documents for approval.", "लोन के लिए आपको सभी 4 KYC डाक्यूमेंट्स अपलोड करने होंगे।") : t("Your documents are uploaded. Please wait for the Admin to verify your account.", "डाक्यूमेंट्स अपलोड हो गए हैं। कृपया एडमिन द्वारा वेरिफिकेशन का इंतज़ार करें।")}</p>
-          </div>
-          <button onClick={() => onNavigate('my_profile')} className="mt-6 w-full sm:w-auto bg-red-500 hover:bg-red-400 text-black px-8 py-3.5 rounded-2xl transition-all font-bold shadow-[0_0_20px_rgba(239,68,68,0.3)] relative z-10">{!hasBasicInfo || !hasAllDocs ? t("Complete KYC Now", "अभी KYC पूरी करें") : t("Check Profile Status", "प्रोफाइल स्टेटस देखें")}</button>
-        </div>
-      )}
-
       {/* REQUEST NEW LOAN BUTTON */}
-      <div className={`mt-8 relative group ${!isEligibleForLoan ? 'opacity-90' : ''}`}>
-        {isEligibleForLoan && <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-cyan-600 rounded-[2.5rem] blur-xl opacity-30 group-hover:opacity-60 transition-opacity duration-500"></div>}
-        <button onClick={() => { if (isEligibleForLoan) { onNavigate('apply'); } else { showAlert(t("Access Denied", "पहुँच वर्जित"), t("Complete profile first.", "पहले प्रोफाइल पूरी करें।")); onNavigate('my_profile'); } }} className={`w-full bg-gradient-to-r from-[#161922] to-[#0f1115] border ${isEligibleForLoan ? 'border-white/10 hover:-translate-y-1 hover:border-cyan-500/30' : 'border-red-500/20 bg-red-950/10'} p-8 rounded-[2.5rem] flex flex-col sm:flex-row items-center justify-between transition-all duration-300 transform relative overflow-hidden z-10`}>
+      <div className="mt-8 relative group">
+        <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-cyan-600 rounded-[2.5rem] blur-xl opacity-30 group-hover:opacity-60 transition-opacity duration-500"></div>
+        <button onClick={() => onNavigate('apply')} className="w-full bg-gradient-to-r from-[#161922] to-[#0f1115] border border-white/10 hover:-translate-y-1 hover:border-cyan-500/30 p-8 rounded-[2.5rem] flex flex-col sm:flex-row items-center justify-between transition-all duration-300 transform relative overflow-hidden z-10">
           <div className="flex items-center space-x-6 text-left">
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg transition-transform duration-500 ${isEligibleForLoan ? 'bg-gradient-to-br from-indigo-500 to-cyan-500 group-hover:scale-110' : 'bg-red-500/10 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]'}`}>{isEligibleForLoan ? <Plus className="h-8 w-8 text-white" /> : <Lock className="h-7 w-7 text-red-400" />}</div>
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg transition-transform duration-500 bg-gradient-to-br from-indigo-500 to-cyan-500 group-hover:scale-110"><Plus className="h-8 w-8 text-white" /></div>
             <div>
-              <h2 className={`text-2xl font-black mb-1 tracking-wide ${isEligibleForLoan ? 'text-white' : 'text-red-400'}`}>{isEligibleForLoan ? t("Apply for a New Loan", "नया लोन अप्लाई करें") : t("Loan Feature Locked", "लोन सुविधा लॉक है")}</h2>
-              <p className={`text-sm ${isEligibleForLoan ? 'text-slate-400' : 'text-red-200/70 font-medium'}`}>{isEligibleForLoan ? t("100% digital process with instant admin approval.", "100% डिजिटल प्रोसेस, तुरंत अप्रूवल के साथ।") : t("Verify KYC documents to unlock loan applications.", "लोन शुरू करने के लिए KYC वेरिफिकेशन जरूरी है।")}</p>
+              <h2 className="text-2xl font-black mb-1 tracking-wide text-white">{t("Apply for a New Loan", "नया लोन अप्लाई करें")}</h2>
+              <p className="text-sm text-slate-400">{t("100% digital process with instant admin approval.", "100% डिजिटल प्रोसेस, तुरंत अप्रूवल के साथ।")}</p>
             </div>
           </div>
-          <div className={`mt-6 sm:mt-0 w-12 h-12 border rounded-full flex items-center justify-center transition-colors ${isEligibleForLoan ? 'border-white/10 group-hover:bg-white/10' : 'border-red-500/30 bg-red-500/10'}`}>{isEligibleForLoan ? <ChevronRight className="h-6 w-6 text-slate-300 group-hover:text-white" /> : <Lock className="h-5 w-5 text-red-400" />}</div>
+          <div className="mt-6 sm:mt-0 w-12 h-12 border rounded-full flex items-center justify-center transition-colors border-white/10 group-hover:bg-white/10"><ChevronRight className="h-6 w-6 text-slate-300 group-hover:text-white" /></div>
         </button>
       </div>
 
@@ -489,7 +454,7 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
             {spinResult ? (
               <div className="animate-in zoom-in duration-500 w-full">
                 <p className="text-amber-400 font-black text-5xl mb-2">+{spinResult} <span className="text-2xl text-amber-500/70">LC</span></p>
-                <p className="text-emerald-400 text-sm font-bold uppercase tracking-widest mb-6">{t("Added to Balance!", "बैलेंस में जुड़ गए!")}</p>
+                <p className="text-emerald-400 text-sm font-bold uppercase tracking-widest mb-6">{t("Added to Balance!", "बैलेंस में जुड़ गए!")}</p>
                 <button onClick={closeWheel} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-black px-6 py-4 rounded-2xl font-black uppercase tracking-widest shadow-[0_0_20px_rgba(245,158,11,0.4)] hover:scale-105 transition-transform">{t("Claim & Close", "कलेक्ट करें")}</button>
               </div>
             ) : (
@@ -502,6 +467,9 @@ export function DashboardView({ loans, profile, onNavigate, session, showAlert, 
   );
 }
 
+// ==========================================
+// 2. VISUAL ANALYTICS
+// ==========================================
 export function UserVisualAnalytics({ loans, t }) {
   const activeLoans = loans.filter(l => l.status === 'active');
   const totalDisbursed = activeLoans.reduce((sum, l) => sum + Number(l.amount || 0), 0);
@@ -565,30 +533,48 @@ export function UserVisualAnalytics({ loans, t }) {
   );
 }
 
-// 🌟 ORIGINATION VIEW 🌟
-export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showAlert, loans = [] }) {
+// ==========================================
+// 3. APPLY FOR LOAN (LOCKED IF NOT VERIFIED)
+// ==========================================
+export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showAlert, loans = [], profile }) {
   const { t } = useContext(LanguageContext);
-  const [amount, setAmount] = useState(100000);
+  
+  // 1. ALL HOOKS
+  const safeSession = session || (localStorage.getItem('leaderpro_session') ? JSON.parse(localStorage.getItem('leaderpro_session')) : null);
+  const userId = safeSession?.user?.id;
+  const accessToken = safeSession?.access_token;
+
+  const [liveProfile, setLiveProfile] = useState(profile);
+  const [isCheckingLock, setIsCheckingLock] = useState(true);
+  const [amount, setAmount] = useState(1000);
   const [endDate, setEndDate] = useState(() => {
     const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0];
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [consent, setConsent] = useState(false);
-
-  // 🪙 COINS STATE LOGIC (FIXED)
   const [applyDiscount, setApplyDiscount] = useState(false);
+
+  useEffect(() => {
+    const fetchFreshProfile = async () => {
+      if(!userId) { setIsCheckingLock(false); return; }
+      try {
+        const res = await fetch(`${supabaseUrl}/rest/v1/profiles?user_id=eq.${userId}`, {
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessToken}` }
+        });
+        const data = await res.json();
+        if (data && data.length > 0) setLiveProfile(data[0]);
+      } catch(e) {}
+      setIsCheckingLock(false);
+    };
+    fetchFreshProfile();
+  }, [userId, accessToken]);
+
+  // 2. LOGIC
   const score = calculateTrustScore(loans);
-  
-  // 1. ट्रस्ट स्कोर वाले कॉइन्स
   const baseLeaderCoins = (loans.length > 0 && score > 400) ? (score - 400) * 10 : 0;
-  
-  // 2. क्विज़ से जीते हुए कॉइन्स (मेमोरी से निकालो)
-  const bonusCoinsKey = `bonus_coins_${session.user.id}`;
+  const bonusCoinsKey = `bonus_coins_${userId}`;
   const earnedBonusCoins = Number(localStorage.getItem(bonusCoinsKey)) || 0;
-  
-  // 3. दोनों को जोड़ दो!
   const totalLeaderCoins = baseLeaderCoins + earnedBonusCoins;
-  
   const hasEnoughCoins = totalLeaderCoins >= 500;
   const displayedCoins = applyDiscount ? totalLeaderCoins - 500 : totalLeaderCoins;
 
@@ -605,20 +591,55 @@ export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showA
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!consent) { showAlert(t("Warning", "चेतावनी"), t("Consent is required.", "सहमति जरूरी है।")); return; }
-    const linkedAdminId = isAdmin ? null : session.user.user_metadata?.linked_admin_id;
     setIsSubmitting(true);
+    
     try {
+      let finalAdminId = null;
+      if (!isAdmin) {
+        finalAdminId = liveProfile?.admin_id || safeSession?.user?.user_metadata?.linked_admin_id;
+        if (!finalAdminId) {
+          showAlert(t("Action Required", "ध्यान दें"), t("Please select your Branch Manager from the dashboard before applying for a loan.", "लोन अप्लाई करने से पहले कृपया डैशबोर्ड से अपना ब्रांच मैनेजर चुनें।"));
+          setIsSubmitting(false); onNavigate('dashboard'); return;
+        }
+      }
+
       const calculatedTenure = calculateMonths(endDate);
       const response = await fetch(`${supabaseUrl}/rest/v1/loans`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ user_id: session.user.id, admin_id: linkedAdminId, amount: Number(amount), recoveredAmount: 0, transactions: [], tenure: Number(calculatedTenure), interestRate: finalInterestRate, emi: 0, status: 'pending', type: 'Personal Loan', createdAt: Date.now(), adminNote: '' })
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ 
+          user_id: userId, admin_id: finalAdminId, amount: Number(amount), recoveredAmount: 0, 
+          transactions: [], tenure: Number(calculatedTenure), interestRate: finalInterestRate, emi: 0, status: 'pending', type: 'Personal Loan', createdAt: Date.now(), adminNote: '' 
+        })
       });
+      
       if (!response.ok) throw new Error("Fail");
-      setIsSubmitting(false); if (onSuccess) onSuccess(); onNavigate('loans');
+      
+      setIsSubmitting(false); if (onSuccess) onSuccess(); onNavigate('loans'); 
     } catch (err) { showAlert(t("Error", "त्रुटि"), t("Could not save. Check DB.", "सेव नहीं हो पाया। डेटाबेस चेक करें।")); setIsSubmitting(false); }
   };
 
+  // 3. EARLY RETURNS FOR LOCKS (AFTER HOOKS)
+  if (isCheckingLock) {
+    return <div className="flex justify-center items-center min-h-[60vh]"><Activity className="animate-spin h-12 w-12 text-cyan-500" /></div>;
+  }
+
+  if (liveProfile?.kyc_status !== 'Verified') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in zoom-in duration-500 px-4">
+        <div className="bg-red-500/10 border border-red-500/30 p-8 rounded-[2.5rem] text-center shadow-xl max-w-md w-full backdrop-blur-md">
+          <Lock className="h-16 w-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-black text-white mb-2">{t("Access Denied", "पहुँच वर्जित")}</h2>
+          <p className="text-slate-400 text-sm mb-6">{t("Please complete your KYC and wait for Admin verification to unlock this feature.", "इस सुविधा का उपयोग करने के लिए कृपया अपनी KYC पूरी करें और एडमिन वेरिफिकेशन का इंतज़ार करें।")}</p>
+          <button onClick={() => onNavigate && onNavigate('dashboard')} className="w-full bg-red-600 hover:bg-red-500 text-white px-6 py-3.5 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)]">
+            {t("Go to Dashboard", "डैशबोर्ड पर जाएँ")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. MAIN RENDER
   return (
     <div className="max-w-4xl mx-auto animate-in fade-in duration-1000 relative pb-20">
       <div className="absolute top-0 right-1/4 w-[400px] h-[400px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none -z-10"></div>
@@ -636,10 +657,9 @@ export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showA
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 group-focus-within:text-cyan-400 transition-colors">{t("I need a loan of (₹)", "मुझे लोन चाहिए (₹)")}</label>
               <div className="relative">
                 <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
-                <input type="number" min="5000" step="1000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full pl-12 pr-6 py-5 bg-white/[0.02] border border-white/5 rounded-2xl text-white text-xl focus:bg-white/[0.04] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all font-bold" required />
+                <input type="number" min="1000" step="1000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full pl-12 pr-6 py-5 bg-white/[0.02] border border-white/5 rounded-2xl text-white text-xl focus:bg-white/[0.04] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all font-bold" required />
               </div>
             </div>
-            
             <div className="space-y-3 group">
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 group-focus-within:text-cyan-400 transition-colors">{t("I will repay by", "मैं वापस करूँगा (तारीख)")}</label>
               <input type="date" min={new Date().toISOString().split('T')[0]} value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-6 py-5 bg-white/[0.02] border border-white/5 rounded-2xl text-white text-xl focus:bg-white/[0.04] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all font-medium" required />
@@ -647,7 +667,6 @@ export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showA
             </div>
           </div>
 
-          {/* 🌟 GAMIFICATION DISCOUNT TOGGLE 🌟 */}
           <div className={`p-6 md:p-8 rounded-3xl border transition-all duration-500 relative overflow-hidden ${applyDiscount ? 'bg-gradient-to-br from-amber-900/40 to-black border-amber-500/50 shadow-[0_0_30px_rgba(245,158,11,0.2)]' : 'bg-black/40 border-white/5 hover:border-amber-500/30'}`}>
             {applyDiscount && <div className="absolute top-0 right-0 w-full h-full bg-amber-500/5 blur-[50px] pointer-events-none"></div>}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 relative z-10">
@@ -657,28 +676,15 @@ export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showA
                 </div>
                 <div>
                   <h3 className={`text-lg font-bold ${applyDiscount ? 'text-amber-400' : 'text-white'}`}>{t("Use Leader Coins", "लीडर कॉइन्स का इस्तेमाल करें")}</h3>
-                  <p className="text-sm text-slate-400 mt-1">
-                    {t("Spend 500 coins to get a 2% discount on your interest rate.", "500 कॉइन्स खर्च करें और ब्याज दर में 2% की छूट पाएं।")}
-                  </p>
-                  {/* ✨ LIVE COIN BALANCE UPDATE HERE ✨ */}
-                  <p className="text-[10px] text-amber-500/70 font-bold uppercase tracking-widest mt-2 transition-all">
-                    {t("Your Balance:", "आपका बैलेंस:")} <span className={applyDiscount ? 'text-white font-black' : ''}>{displayedCoins} LC</span>
-                  </p>
+                  <p className="text-sm text-slate-400 mt-1">{t("Spend 500 coins to get a 2% discount on your interest rate.", "500 कॉइन्स खर्च करें और ब्याज दर में 2% की छूट पाएं।")}</p>
+                  <p className="text-[10px] text-amber-500/70 font-bold uppercase tracking-widest mt-2 transition-all">{t("Your Balance:", "आपका बैलेंस:")} <span className={applyDiscount ? 'text-white font-black' : ''}>{displayedCoins} LC</span></p>
                 </div>
               </div>
-              
-              <button 
-                type="button"
-                disabled={!hasEnoughCoins}
-                onClick={() => setApplyDiscount(!applyDiscount)}
-                className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${applyDiscount ? 'bg-amber-500' : 'bg-slate-700'}`}
-              >
+              <button type="button" disabled={!hasEnoughCoins} onClick={() => setApplyDiscount(!applyDiscount)} className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${applyDiscount ? 'bg-amber-500' : 'bg-slate-700'}`}>
                 <span className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${applyDiscount ? 'translate-x-6' : 'translate-x-0'}`} />
               </button>
             </div>
-            {!hasEnoughCoins && (
-              <p className="text-xs text-red-400/80 mt-4 font-bold flex items-center relative z-10"><X className="h-3 w-3 mr-1" /> {t("You need at least 500 Leader Coins to unlock this offer.", "इस ऑफर के लिए कम से कम 500 लीडर कॉइन्स चाहिए।")}</p>
-            )}
+            {!hasEnoughCoins && <p className="text-xs text-red-400/80 mt-4 font-bold flex items-center relative z-10"><X className="h-3 w-3 mr-1" /> {t("You need at least 500 Leader Coins to unlock this offer.", "इस ऑफर के लिए कम से कम 500 लीडर कॉइन्स चाहिए।")}</p>}
           </div>
 
           <div className={`border p-6 md:p-8 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-inner transition-colors duration-500 ${applyDiscount ? 'bg-gradient-to-br from-amber-950/40 to-black border-amber-500/30' : 'bg-gradient-to-br from-indigo-950/40 to-black border-indigo-500/20'}`}>
@@ -707,9 +713,7 @@ export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showA
             <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 rounded-2xl opacity-0 group-hover:opacity-40 blur-xl transition-opacity duration-500"></div>
             <div className="relative px-8 py-5 flex items-center justify-center space-x-3">
               {isSubmitting ? <Activity className="h-5 w-5 text-white animate-spin" /> : <Check className="h-6 w-6 text-white" />}
-              <span className="text-white font-black tracking-widest uppercase text-lg">
-                {isSubmitting ? t('Processing Data...', 'प्रोसेस हो रहा है...') : t('Submit Secure Application', 'सुरक्षित एप्लिकेशन जमा करें')}
-              </span>
+              <span className="text-white font-black tracking-widest uppercase text-lg">{isSubmitting ? t('Processing Data...', 'प्रोसेस हो रहा है...') : t('Submit Secure Application', 'सुरक्षित एप्लिकेशन जमा करें')}</span>
             </div>
           </button>
         </form>
@@ -718,12 +722,37 @@ export function OriginationView({ session, onNavigate, onSuccess, isAdmin, showA
   );
 }
 
-export function MyLoansView({ loans, profile }) {
+// ==========================================
+// 4. MY LOANS (LOCKED IF NOT VERIFIED)
+// ==========================================
+export function MyLoansView({ loans = [], profile, session, onNavigate }) {
   const { t } = useContext(LanguageContext);
+  
+  // 1. ALL HOOKS
+  const safeSession = session || (localStorage.getItem('leaderpro_session') ? JSON.parse(localStorage.getItem('leaderpro_session')) : null);
+  const userId = safeSession?.user?.id;
+  const accessToken = safeSession?.access_token;
+
   const [historyLoan, setHistoryLoan] = useState(null); 
+  const [liveProfile, setLiveProfile] = useState(profile);
+  const [isCheckingLock, setIsCheckingLock] = useState(true);
 
-  if (loans.length === 0) return (<div className="flex flex-col items-center justify-center py-32 opacity-50"><FileText className="h-20 w-20 text-slate-500 mb-6" /><h2 className="text-2xl font-bold text-white">{t("No loans found", "कोई लोन नहीं है")}</h2></div>);
+  useEffect(() => {
+    const fetchFreshProfile = async () => {
+      if(!userId) { setIsCheckingLock(false); return; }
+      try {
+        const res = await fetch(`${supabaseUrl}/rest/v1/profiles?user_id=eq.${userId}`, {
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessToken}` }
+        });
+        const data = await res.json();
+        if (data && data.length > 0) setLiveProfile(data[0]);
+      } catch(e) {}
+      setIsCheckingLock(false);
+    };
+    fetchFreshProfile();
+  }, [userId, accessToken]);
 
+  // 2. LOGIC
   const downloadLedger = async (loan) => { 
       try {
         const accruedInterest = calculateAccruedInterest(loan.amount, loan.interestRate, loan.createdAt);
@@ -741,10 +770,10 @@ export function MyLoansView({ loans, profile }) {
         const cardY = 45;
         doc.setFillColor(248, 250, 252); doc.roundedRect(14, cardY, pageWidth / 2 - 18, 35, 3, 3, 'F');
         doc.setFontSize(9); doc.setTextColor(100, 116, 139); doc.text("ISSUED TO:", 19, cardY + 7);
-        doc.setFontSize(12); doc.setTextColor(15, 23, 42); doc.text(profile?.full_name || 'N/A', 19, cardY + 14);
+        doc.setFontSize(12); doc.setTextColor(15, 23, 42); doc.text(liveProfile?.full_name || 'N/A', 19, cardY + 14);
         doc.setFontSize(9); doc.setTextColor(71, 85, 105); doc.setFont("helvetica", "normal");
-        const aadhar = profile?.aadhar_no ? `Aadhar: XXXX-XXXX-${profile.aadhar_no.slice(-4)}` : 'Aadhar: N/A';
-        doc.text(aadhar, 19, cardY + 21); if (profile?.phone) doc.text(`Phone: ${profile.phone}`, 19, cardY + 26);
+        const aadhar = liveProfile?.aadhar_no ? `Aadhar: XXXX-XXXX-${liveProfile.aadhar_no.slice(-4)}` : 'Aadhar: N/A';
+        doc.text(aadhar, 19, cardY + 21); if (liveProfile?.phone) doc.text(`Phone: ${liveProfile.phone}`, 19, cardY + 26);
         doc.setFillColor(15, 23, 42); doc.roundedRect(pageWidth / 2 + 4, cardY, pageWidth / 2 - 18, 35, 3, 3, 'F');
         doc.setFontSize(9); doc.setTextColor(148, 163, 184); doc.setFont("helvetica", "bold"); doc.text("NET LIABILITY (BALANCE)", pageWidth / 2 + 9, cardY + 7);
         doc.setFontSize(22); doc.setTextColor(255, 255, 255); doc.text(`Rs. ${netBaki.toLocaleString('en-IN')}`, pageWidth / 2 + 9, cardY + 18);
@@ -766,6 +795,29 @@ export function MyLoansView({ loans, profile }) {
       } catch (error) { console.error("PDF Error: ", error); alert(t("Error generating or downloading PDF. Please try again.", "PDF बनाने या डाउनलोड करने में एरर आई है। कृपया दोबारा प्रयास करें।")); }
   };
 
+  // 3. EARLY RETURNS FOR LOCK (AFTER ALL HOOKS)
+  if (isCheckingLock) {
+    return <div className="flex justify-center items-center min-h-[60vh]"><Activity className="animate-spin h-12 w-12 text-cyan-500" /></div>;
+  }
+
+  if (liveProfile?.kyc_status !== 'Verified' && loans.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in zoom-in duration-500 px-4">
+        <div className="bg-red-500/10 border border-red-500/30 p-8 rounded-[2.5rem] text-center shadow-xl max-w-md w-full backdrop-blur-md">
+          <Lock className="h-16 w-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-black text-white mb-2">{t("Access Denied", "पहुँच वर्जित")}</h2>
+          <p className="text-slate-400 text-sm mb-6">{t("Please complete your KYC and wait for Admin verification to unlock this feature.", "इस सुविधा का उपयोग करने के लिए कृपया अपनी KYC पूरी करें और एडमिन वेरिफिकेशन का इंतज़ार करें।")}</p>
+          <button onClick={() => onNavigate && onNavigate('dashboard')} className="w-full bg-red-600 hover:bg-red-500 text-white px-6 py-3.5 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)]">
+            {t("Go to Dashboard", "डैशबोर्ड पर जाएँ")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loans.length === 0) return (<div className="flex flex-col items-center justify-center py-32 opacity-50"><FileText className="h-20 w-20 text-slate-500 mb-6" /><h2 className="text-2xl font-bold text-white">{t("No loans found", "कोई लोन नहीं है")}</h2></div>);
+
+  // 4. MAIN RENDER
   return (
     <div className="space-y-8 animate-in fade-in duration-1000 relative pb-10">
       <div className="absolute top-[20%] left-0 w-[400px] h-[400px] bg-cyan-600/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
@@ -819,15 +871,25 @@ export function MyLoansView({ loans, profile }) {
   );
 }
 
-// 🌟 CINEMATIC USER PROFILE 🌟
+// ==========================================
+// 5. USER PROFILE FORM (NO LOCK HERE)
+// ==========================================
 export function UserMyProfileView({ profile, session, onSave, showAlert }) {
   const { t } = useContext(LanguageContext);
+  
+  // 1. ALL HOOKS
+  const safeSession = session || (localStorage.getItem('leaderpro_session') ? JSON.parse(localStorage.getItem('leaderpro_session')) : null);
+  const userId = safeSession?.user?.id;
+  const accessToken = safeSession?.access_token;
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [fatherName, setFatherName] = useState(profile?.father_name || '');
   const [aadharNo, setAadharNo] = useState(profile?.aadhar_no || '');
   const [phone, setPhone] = useState(profile?.phone || '');
   const [address, setAddress] = useState(profile?.address || '');
+  const [pincode, setPincode] = useState(profile?.pincode || ''); 
+  
   const [aadharFront, setAadharFront] = useState(null);
   const [aadharBack, setAadharBack] = useState(null);
   const [panCard, setPanCard] = useState(null);
@@ -835,13 +897,18 @@ export function UserMyProfileView({ profile, session, onSave, showAlert }) {
 
   const isVerified = profile?.kyc_status === 'Verified';
 
+  // 2. LOGIC
   const uploadFile = async (file, type) => {
     if (!file) return null;
     const fileExt = file.name.split('.').pop();
-    const fileName = `${session.user.id}_${type}_${Date.now()}.${fileExt}`;
-    const filePath = `${session.user.id}/${fileName}`;
+    const fileName = `${userId}_${type}_${Date.now()}.${fileExt}`;
+    const filePath = `${userId}/${fileName}`;
     try {
-      const response = await fetch(`${supabaseUrl}/storage/v1/object/kyc-documents/${filePath}`, { method: 'POST', headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': file.type }, body: file });
+      const response = await fetch(`${supabaseUrl}/storage/v1/object/kyc-documents/${filePath}`, { 
+        method: 'POST', 
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessToken}`, 'Content-Type': file.type }, 
+        body: file 
+      });
       if (!response.ok) throw new Error(`Failed to upload ${type}`);
       return `${supabaseUrl}/storage/v1/object/public/kyc-documents/${filePath}`;
     } catch (err) { return null; }
@@ -849,33 +916,61 @@ export function UserMyProfileView({ profile, session, onSave, showAlert }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!fullName) { showAlert(t("Warning", "चेतावनी"), t("Name is required", "नाम लिखना जरूरी है")); return; }
+    if (!fullName || !phone || !aadharNo || !address || !pincode) { 
+      showAlert(t("Warning", "चेतावनी"), t("Please fill all required details.", "कृपया सभी जरूरी जानकारी भरें।")); 
+      return; 
+    }
+    
     setIsSubmitting(true);
-    let aadhar_front_url = profile?.aadhar_front_url || null; let aadhar_back_url = profile?.aadhar_back_url || null; let pan_url = profile?.pan_url || null; let selfie_url = profile?.selfie_url || null;
+    let aadhar_front_url = profile?.aadhar_front_url || null; 
+    let aadhar_back_url = profile?.aadhar_back_url || null; 
+    let pan_url = profile?.pan_url || null; 
+    let selfie_url = profile?.selfie_url || null;
+    
     if (aadharFront) aadhar_front_url = await uploadFile(aadharFront, 'aadhar_front');
     if (aadharBack) aadhar_back_url = await uploadFile(aadharBack, 'aadhar_back');
     if (panCard) pan_url = await uploadFile(panCard, 'pan');
     if (selfie) selfie_url = await uploadFile(selfie, 'selfie');
-    const data = { user_id: session.user.id, admin_id: session.user.user_metadata?.linked_admin_id, full_name: fullName, father_name: fatherName, aadhar_no: aadharNo, phone: phone, address: address, kyc_status: isVerified ? 'Verified' : 'Pending', aadhar_front_url, aadhar_back_url, pan_url, selfie_url };
-    if (!profile) data.createdAt = Date.now(); else data.id = profile.id;
-    await onSave(data, !!profile);
-    setIsSubmitting(false);
+    
+    const payload = { 
+      user_id: userId, 
+      admin_id: profile?.admin_id || safeSession?.user?.user_metadata?.linked_admin_id || null, 
+      full_name: fullName, 
+      father_name: fatherName, 
+      aadhar_no: aadharNo, 
+      phone: phone, 
+      address: address, 
+      pincode: pincode, 
+      kyc_status: profile?.kyc_status === 'Verified' ? 'Verified' : 'Pending', 
+      aadhar_front_url, aadhar_back_url, pan_url, selfie_url 
+    };
+    
+    if (!profile?.id) payload.createdAt = Date.now();
+    
+    try {
+      const url = profile?.id ? `${supabaseUrl}/rest/v1/profiles?user_id=eq.${userId}` : `${supabaseUrl}/rest/v1/profiles`;
+      const method = profile?.id ? 'PATCH' : 'POST';
+
+      const res = await fetch(url, {
+        method: method,
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error("Failed to save profile");
+      showAlert(t("Success", "सफलता"), t("Profile Saved! Please sync with an admin for verification.", "प्रोफाइल सेव हो गई! वेरिफिकेशन के लिए एडमिन चुनें।"));
+
+      if (typeof onSave === 'function') { try { await onSave(); } catch(e) {} }
+      setTimeout(() => { window.location.reload(); }, 1000);
+
+    } catch (err) { showAlert(t("Error", "त्रुटि"), t("Could not save profile. Check connection.", "प्रोफाइल सेव नहीं हो पाई। कनेक्शन चेक करें।")); } 
+    finally { setIsSubmitting(false); }
   };
 
-const FileUploadBtn = ({ label, onChange, currentUrl }) => (
+  const FileUploadBtn = ({ label, onChange, currentUrl }) => (
     <div className="relative group cursor-pointer w-full">
-      <input 
-        type="file" 
-        accept="image/*" 
-        onChange={onChange} 
-        disabled={isVerified} 
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed" 
-      />
-      <div className={`flex items-center justify-center space-x-2 border-2 border-dashed p-4 rounded-xl transition-all duration-300 ${
-        currentUrl || isVerified
-          ? 'border-emerald-500/50 bg-emerald-500/10' 
-          : 'border-slate-600 bg-black/40 group-hover:border-cyan-500 group-hover:bg-cyan-950/30'
-      }`}>
+      <input type="file" accept="image/*" onChange={onChange} disabled={isVerified} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed" />
+      <div className={`flex items-center justify-center space-x-2 border-2 border-dashed p-4 rounded-xl transition-all duration-300 ${currentUrl || isVerified ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-600 bg-black/40 group-hover:border-cyan-500 group-hover:bg-cyan-950/30'}`}>
         {currentUrl || isVerified ? <Check className="h-5 w-5 text-emerald-400" /> : <Upload className="h-5 w-5 text-slate-400 group-hover:text-cyan-400" />}
         <span className={`text-sm font-semibold ${currentUrl || isVerified ? 'text-emerald-400' : 'text-slate-300 group-hover:text-cyan-400'}`}>
           {currentUrl ? `${label} (${t("Uploaded", "अपलोड हो गया")})` : isVerified ? `${label} (${t("Verified", "वेरीफाइड")})` : `${t("Upload", "अपलोड करें")} ${label}`}
@@ -904,10 +999,13 @@ const FileUploadBtn = ({ label, onChange, currentUrl }) => (
         <form onSubmit={handleSubmit} className="space-y-10">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-2 group"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 transition-colors group-focus-within:text-cyan-400">{t("Legal Full Name", "कानूनी पूरा नाम")}</label><input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} disabled={isVerified} className="w-full px-5 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl text-white text-lg focus:bg-white/[0.05] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" required /></div>
-            <div className="space-y-2 group"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 transition-colors group-focus-within:text-cyan-400">{t("Father's Name", "पिता का नाम")}</label><input type="text" value={fatherName} onChange={(e) => setFatherName(e.target.value)} disabled={isVerified} className="w-full px-5 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl text-white text-lg focus:bg-white/[0.05] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" /></div>
-            <div className="space-y-2 group relative"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center">{t("Aadhar Number", "आधार नंबर")} <Lock className="h-3 w-3 ml-2 text-slate-600" /></label><input type="text" value={aadharNo} readOnly={true} className="w-full px-5 py-4 bg-black/40 border border-white/5 rounded-2xl text-slate-500 font-mono tracking-widest text-lg cursor-not-allowed outline-none select-all" /><p className="text-[10px] text-slate-600 ml-1 absolute -bottom-5">{t("Aadhar is permanently linked.", "आधार हमेशा के लिए लिंक है।")}</p></div>
-            <div className="space-y-2 group"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 transition-colors group-focus-within:text-cyan-400">{t("Phone Number", "फोन नंबर")}</label><input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={isVerified} className="w-full px-5 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl text-white text-lg font-mono focus:bg-white/[0.05] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" /></div>
-            <div className="space-y-2 group md:col-span-2 mt-2"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 transition-colors group-focus-within:text-cyan-400">{t("Residential Address", "घर का पता")}</label><textarea value={address} onChange={(e) => setAddress(e.target.value)} disabled={isVerified} className="w-full px-5 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl text-white text-lg focus:bg-white/[0.05] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none resize-none h-32 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" /></div>
+            <div className="space-y-2 group"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 transition-colors group-focus-within:text-cyan-400">{t("Father's Name", "पिता का नाम")}</label><input type="text" value={fatherName} onChange={(e) => setFatherName(e.target.value)} disabled={isVerified} className="w-full px-5 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl text-white text-lg focus:bg-white/[0.05] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" required /></div>
+            <div className="space-y-2 group relative"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center">{t("Aadhar Number", "आधार नंबर")}</label><input type="text" maxLength="12" value={aadharNo} onChange={(e) => setAadharNo(e.target.value.replace(/\D/g,''))} disabled={isVerified} className="w-full px-5 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl text-white text-lg font-mono tracking-widest focus:bg-white/[0.05] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" required /></div>
+            <div className="space-y-2 group"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 transition-colors group-focus-within:text-cyan-400">{t("Phone Number", "फोन नंबर")}</label><input type="text" maxLength="10" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g,''))} disabled={isVerified} className="w-full px-5 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl text-white text-lg font-mono focus:bg-white/[0.05] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" required /></div>
+            
+            <div className="space-y-2 group"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 transition-colors group-focus-within:text-cyan-400">{t("Area Pincode", "पिनकोड")}</label><input type="text" maxLength="6" value={pincode} onChange={(e) => setPincode(e.target.value.replace(/\D/g, ''))} disabled={isVerified} className="w-full px-5 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl text-white text-lg font-mono focus:bg-white/[0.05] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" required /></div>
+
+            <div className="space-y-2 group md:col-span-2 mt-2"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 transition-colors group-focus-within:text-cyan-400">{t("Residential Address", "घर का पता")}</label><textarea value={address} onChange={(e) => setAddress(e.target.value)} disabled={isVerified} className="w-full px-5 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl text-white text-lg focus:bg-white/[0.05] focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none resize-none h-24 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" required /></div>
           </div>
 
           <div className="pt-10 mt-6 border-t border-white/5">
@@ -937,15 +1035,63 @@ const FileUploadBtn = ({ label, onChange, currentUrl }) => (
   );
 }
 
-export function UserLiveChatView({ session, profile, chats, onSend, onClose }) {
+// ==========================================
+// 6. LIVE CHAT (LOCKED IF NOT VERIFIED)
+// ==========================================
+export function UserLiveChatView({ session, profile, chats, onSend, onClose, onNavigate }) {
   const { t } = useContext(LanguageContext);
+  
+  // 1. ALL HOOKS
+  const safeSession = session || (localStorage.getItem('leaderpro_session') ? JSON.parse(localStorage.getItem('leaderpro_session')) : null);
+  const userId = safeSession?.user?.id;
+  const accessToken = safeSession?.access_token;
+
   const [msgInput, setMsgInput] = useState('');
+  const [liveProfile, setLiveProfile] = useState(profile);
+  const [isCheckingLock, setIsCheckingLock] = useState(true);
   const chatContainerRef = useRef(null);
+
+  useEffect(() => {
+    const fetchFreshProfile = async () => {
+      if(!userId) { setIsCheckingLock(false); return; }
+      try {
+        const res = await fetch(`${supabaseUrl}/rest/v1/profiles?user_id=eq.${userId}`, {
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessToken}` }
+        });
+        const data = await res.json();
+        if (data && data.length > 0) setLiveProfile(data[0]);
+      } catch(e) {}
+      setIsCheckingLock(false);
+    };
+    fetchFreshProfile();
+  }, [userId, accessToken]);
 
   useEffect(() => { const timer = setTimeout(() => { if (chatContainerRef.current) { chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; } }, 50); return () => clearTimeout(timer); }, [chats]);
 
-  const handleSend = (e) => { e.preventDefault(); if (!msgInput.trim()) return; const linkedAdminId = session.user.user_metadata?.linked_admin_id; onSend(session.user.id, linkedAdminId, 'user', msgInput); setMsgInput(''); };
+  // 2. LOGIC
+  const handleSend = (e) => { e.preventDefault(); if (!msgInput.trim()) return; const linkedAdminId = safeSession?.user?.user_metadata?.linked_admin_id || liveProfile?.admin_id; onSend(userId, linkedAdminId, 'user', msgInput); setMsgInput(''); };
 
+  // 3. EARLY RETURNS (AFTER HOOKS)
+  if (isCheckingLock) {
+    return <div className="flex justify-center items-center min-h-[60vh]"><Activity className="animate-spin h-12 w-12 text-cyan-500" /></div>;
+  }
+
+  if (liveProfile?.kyc_status !== 'Verified') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in zoom-in duration-500 px-4">
+        <div className="bg-red-500/10 border border-red-500/30 p-8 rounded-[2.5rem] text-center shadow-xl max-w-md w-full backdrop-blur-md">
+          <Lock className="h-16 w-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-black text-white mb-2">{t("Access Denied", "पहुँच वर्जित")}</h2>
+          <p className="text-slate-400 text-sm mb-6">{t("Please complete your KYC and wait for Admin verification to unlock Live Chat.", "लाइव चैट शुरू करने के लिए कृपया अपनी KYC पूरी करें और एडमिन वेरिफिकेशन का इंतज़ार करें।")}</p>
+          <button onClick={() => onNavigate && onNavigate('dashboard')} className="w-full bg-red-600 hover:bg-red-500 text-white px-6 py-3.5 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)]">
+            {t("Go to Dashboard", "डैशबोर्ड पर जाएँ")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. MAIN RENDER
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[400px] animate-in fade-in duration-700 relative">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-indigo-600/10 blur-[100px] rounded-full pointer-events-none -z-10"></div>
@@ -989,6 +1135,164 @@ export function UserLiveChatView({ session, profile, chats, onSend, onClose }) {
   );
 }
 
+
+export function AIInsightsModal({ isOpen, onClose, loading, result, error, t }) {
+  if (!isOpen) return null;
+  const handleDownload = async () => {
+    if (!result) return;
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+      const blob = new Blob([result], { type: 'text/plain;charset=utf-8;' });
+      const blobUrl = URL.createObjectURL(blob);
+      await Browser.open({ url: blobUrl, windowName: '_system' });
+    } else {
+      const blob = new Blob([result], { type: 'text/plain;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `AI_Financial_Report_${new Date().toISOString().slice(0, 10)}.txt`;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  return (
+     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/90 backdrop-blur-2xl animate-in fade-in duration-300">
+         <div className="bg-[#0a0a0a]/90 border border-purple-500/20 p-8 rounded-[2.5rem] shadow-[0_0_80px_rgba(168,85,247,0.2)] max-w-lg w-full relative max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="absolute -top-32 -left-32 w-80 h-80 bg-purple-600/20 blur-[80px] rounded-full pointer-events-none"></div>
+            <button onClick={onClose} className="absolute top-8 right-8 text-slate-400 hover:text-white bg-white/5 p-2 rounded-full border border-white/10 transition-colors z-20"><X className="h-5 w-5" /></button>
+            
+            <div className="flex items-center space-x-4 mb-8 shrink-0 relative z-10">
+               <div className="p-3 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-2xl border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+                 <Bot className="h-7 w-7 text-purple-400" />
+               </div>
+               <div>
+                 <h3 className="text-2xl font-black text-white tracking-tight">{t("AI Insights", "AI विश्लेषण")}</h3>
+                 <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">{t("Powered by Gemini", "जेमिनी AI द्वारा संचालित")}</p>
+               </div>
+            </div>
+            
+            <div className="overflow-y-auto flex-1 pr-2 text-slate-300 text-sm md:text-base leading-relaxed space-y-4 custom-scrollbar relative z-10">
+               {loading ? (
+                   <div className="flex flex-col items-center justify-center py-16 space-y-6">
+                       <div className="relative">
+                         <div className="absolute inset-0 bg-purple-500/20 blur-xl rounded-full"></div>
+                         <Sparkles className="h-12 w-12 text-purple-400 animate-pulse relative z-10" />
+                       </div>
+                       <p className="text-purple-300 animate-pulse font-bold tracking-widest uppercase text-sm">{t("Analyzing data...", "डेटा का विश्लेषण हो रहा है...")}</p>
+                   </div>
+               ) : error ? (
+                   <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-5 rounded-2xl font-medium flex items-center"><AlertCircle className="h-5 w-5 mr-3 shrink-0"/> {error}</div>
+               ) : (
+                   <div className="whitespace-pre-wrap bg-white/[0.02] p-6 rounded-3xl border border-white/5 shadow-inner">{result}</div>
+               )}
+            </div>
+            
+            <div className="mt-8 flex flex-col sm:flex-row gap-4 shrink-0 relative z-10">
+               {!loading && !error && result && (
+                  <button onClick={handleDownload} className="flex-1 flex items-center justify-center bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all duration-300 shadow-[0_0_20px_rgba(168,85,247,0.3)] hover:scale-[1.02]">
+                     <Download className="h-4 w-4 mr-2" /> {t("Download Report", "रिपोर्ट डाउनलोड")}
+                  </button>
+               )}
+               <button onClick={onClose} className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all duration-300">
+                  {t("Dismiss", "बंद करें")}
+               </button>
+            </div>
+         </div>
+     </div>
+  );
+}
+
+// ==========================================
+// 7. LOAN HISTORY MODAL
+// ==========================================
+export function LoanHistoryModal({ loan, onClose, userName, t }) { 
+    if (!loan) return null;
+    const accruedInterest = calculateAccruedInterest(loan.amount, loan.interestRate, loan.createdAt);
+    const netBaki = Number(loan.amount) + accruedInterest - Number(loan.recoveredAmount || 0);
+    const transactions = Array.isArray(loan.transactions) ? loan.transactions : [];
+    const totalTopups = transactions.reduce((sum, tx) => sum + Number(tx.topup || 0), 0);
+    const initialPrincipal = Number(loan.amount) - totalTopups;
+    
+    return (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-2xl animate-in fade-in duration-300">
+         <div className="bg-[#0a0a0a]/90 border border-white/10 p-8 rounded-[2.5rem] shadow-[0_0_80px_rgba(0,0,0,0.8)] max-w-lg w-full relative max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col">
+            <div className="absolute -top-32 -right-32 w-80 h-80 bg-blue-600/20 blur-[80px] rounded-full pointer-events-none"></div>
+            <button onClick={onClose} className="absolute top-8 right-8 text-slate-400 hover:text-white bg-white/5 p-2 rounded-full border border-white/10 transition-colors z-20"><X className="h-5 w-5" /></button>
+            
+            <div className="flex items-center space-x-4 mb-8 sticky top-0 z-10 pt-2 pb-4 bg-[#0a0a0a]/80 backdrop-blur-md border-b border-white/5 -mx-8 px-8 -mt-8">
+               <div className="p-3 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-2xl border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                 <Clock className="h-7 w-7 text-blue-400" />
+               </div>
+               <div>
+                 <h3 className="text-2xl font-black text-white tracking-tight">{t("Loan History", "लोन हिस्ट्री")}</h3>
+                 <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">{t("Ledger & Transactions", "लेज़र और ट्रांज़ैक्शन")}</p>
+               </div>
+            </div>
+            
+            <div className="space-y-8 relative z-10 pb-6">
+               <div className="bg-black/50 p-5 rounded-3xl border border-white/5 flex justify-between items-center shadow-inner">
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t("Loan ID", "लोन आईडी")}</p>
+                    <p className="text-sm font-mono text-cyan-400 tracking-wider">{loan.id}</p>
+                  </div>
+                  {userName && <div className="text-right"><p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1">{t("User", "यूजर")}</p><p className="text-sm text-white font-bold">{userName}</p></div>}
+               </div>
+               
+               <div className="relative pl-6 border-l border-white/10 space-y-8 ml-3 py-2">
+                  <div className="relative">
+                     <div className="absolute -left-[31.5px] top-1 h-4 w-4 rounded-full bg-cyan-500 border-4 border-[#0a0a0a] shadow-[0_0_15px_rgba(6,182,212,0.6)]"></div>
+                     <p className="text-[10px] text-slate-500 font-mono mb-1.5 uppercase tracking-wider">{new Date(Number(loan.createdAt)).toLocaleString('en-IN')}</p>
+                     <p className="text-sm text-white font-bold">{t("Loan Started (Initial Disbursed)", "लोन शुरू हुआ (पहला वितरण)")}</p>
+                     <p className="text-2xl font-black text-cyan-400 mt-1 tracking-tight">+ ₹{initialPrincipal.toLocaleString('en-IN')}</p>
+                  </div>
+                  
+                  {transactions.map((tx, idx) => (
+                     <div key={tx.id || idx} className="relative mt-8">
+                        <div className={`absolute -left-[31.5px] top-1 h-4 w-4 rounded-full border-4 border-[#0a0a0a] shadow-lg ${tx.topup > 0 ? 'bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.6)]' : 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.6)]'}`}></div>
+                        <p className="text-[10px] text-slate-500 font-mono mb-1.5 uppercase tracking-wider">{new Date(tx.date).toLocaleString('en-IN')}</p>
+                        
+                        {tx.topup > 0 && (
+                          <div className="mb-3 bg-purple-950/20 p-4 rounded-2xl border border-purple-500/10 inline-block w-full">
+                            <p className="text-xs text-purple-200/80 font-bold uppercase tracking-widest mb-1">{t("Top-up Given", "और दिए (टॉप-अप)")}</p>
+                            <p className="text-2xl font-black text-purple-400 tracking-tight">+ ₹{Number(tx.topup).toLocaleString('en-IN')}</p>
+                          </div>
+                        )}
+                        
+                        {tx.repay > 0 && (
+                          <div className="bg-emerald-950/20 p-4 rounded-2xl border border-emerald-500/10 inline-block w-full">
+                            <p className="text-xs text-emerald-200/80 font-bold uppercase tracking-widest mb-1">{t("Repayment Received", "वापस आए (रीपेमेंट)")}</p>
+                            <p className="text-2xl font-black text-emerald-400 tracking-tight">- ₹{Number(tx.repay).toLocaleString('en-IN')}</p>
+                          </div>
+                        )}
+                     </div>
+                  ))}
+  
+                  <div className="relative mt-8">
+                     <div className="absolute -left-[31.5px] top-1 h-4 w-4 rounded-full bg-amber-500 border-4 border-[#0a0a0a] shadow-[0_0_15px_rgba(245,158,11,0.6)]"></div>
+                     <p className="text-[10px] text-slate-500 font-mono mb-1.5 uppercase tracking-wider">{t("Till Date Calculation", "आज तक का हिसाब")}</p>
+                     <p className="text-sm text-white font-bold">{t(`Total Accrued Interest (${loan.interestRate}% P.A.)`, `कुल लगा ब्याज (${loan.interestRate}% P.A.)`)}</p>
+                     <p className="text-2xl font-black text-amber-400 mt-1 tracking-tight">+ ₹{accruedInterest.toLocaleString('en-IN')}</p>
+                  </div>
+               </div>
+               
+               <div className="mt-8 pt-6 border-t border-white/10 flex justify-between items-center bg-gradient-to-r from-cyan-950/40 to-blue-950/40 p-6 rounded-3xl border-b border-cyan-500/20 shadow-inner">
+                  <span className="text-cyan-400/80 font-bold uppercase tracking-widest text-[10px]">{t("Net Liability", "नेट बाकी रकम")}</span>
+                  <span className="text-4xl font-black text-cyan-300 tracking-tight">₹{netBaki.toLocaleString('en-IN')}</span>
+               </div>
+  
+               <button onClick={onClose} className="w-full mt-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-sm transition-all duration-300">
+                  {t("Close Window", "वापस जाएं")}
+               </button>
+            </div>
+         </div>
+      </div>
+    );
+}
+
+// ==========================================
+// 8. USER NOTIFICATIONS MODAL
+// ==========================================
 export function UserNotificationsModal({ notifications, onClose }) {
   const { t } = useContext(LanguageContext);
   const notifs = Array.isArray(notifications) ? notifications : [];
