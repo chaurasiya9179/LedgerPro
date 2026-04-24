@@ -268,16 +268,55 @@ export function DashboardView({ loans = [], profile, onNavigate, session, showAl
             </div>
             {nearbyAdmins.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {nearbyAdmins.map((admin) => (
-                  <div key={admin.user_id} className="bg-gradient-to-br from-white/[0.03] to-black/40 border border-white/10 p-5 rounded-3xl group hover:border-cyan-500/40 hover:bg-cyan-950/20 transition-all">
-                    <div className="flex items-center space-x-4 mb-4">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center text-xl font-black text-white border border-white/10 group-hover:from-cyan-600 transition-all">{admin.full_name?.charAt(0) || <User className="h-5 w-5" />}</div>
-                      <div><h4 className="font-bold text-white group-hover:text-cyan-400 transition-colors">{admin.full_name}</h4><p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">ID: {admin.user_id.substring(0, 13)}...</p></div>
+              {nearbyAdmins.map((admin) => (
+                  <div key={admin.user_id} className="bg-[#111318] border border-white/10 hover:border-cyan-500/50 p-5 rounded-[2rem] transition-all duration-300 group shadow-lg hover:shadow-[0_0_30px_rgba(6,182,212,0.15)] flex flex-col items-start justify-between gap-5 relative overflow-hidden">
+                    
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 blur-[30px] rounded-full group-hover:bg-cyan-500/10 transition-colors pointer-events-none"></div>
+
+                    <div className="flex items-start gap-4 flex-1 w-full relative z-10">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-900/50 to-black flex items-center justify-center border border-cyan-500/30 shrink-0 overflow-hidden shadow-inner">
+                        {admin.selfie_url ? (
+                           <img src={admin.selfie_url} alt="Admin" className="w-full h-full object-cover" />
+                        ) : (
+                           <span className="text-2xl font-black text-cyan-400 uppercase">{admin.full_name?.charAt(0) || 'A'}</span>
+                        )}
+                      </div>
+
+                      <div className="flex-1">
+                        <h4 className="text-lg font-bold text-white flex items-center tracking-wide">
+                           {admin.full_name}
+                           <span className="ml-2 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[9px] px-2 py-0.5 rounded-full uppercase tracking-widest font-black flex items-center">
+                              <Check className="h-2.5 w-2.5 mr-1" /> Verified
+                           </span>
+                        </h4>
+                        <p className="text-xs text-slate-500 font-mono mt-0.5 mb-2">ID: {admin.user_id?.substring(0, 10).toUpperCase()}...</p>
+                        
+                        <p className="text-[10px] text-slate-400 flex items-start leading-relaxed">
+                           <MapPin className="h-3.5 w-3.5 mr-1.5 mt-0.5 text-cyan-500 shrink-0" />
+                           <span className="line-clamp-2">{admin.address || 'Address pending'}</span>
+                        </p>
+                        
+                        {admin.phone && (
+                           <p className="text-[10px] text-slate-400 flex items-center mt-1.5">
+                             <Phone className="h-3.5 w-3.5 mr-1.5 text-cyan-500 shrink-0" />
+                             +91 {admin.phone}
+                           </p>
+                        )}
+                      </div>
                     </div>
-                    <div className="space-y-2 mb-5 text-xs text-slate-400"><div className="flex items-start"><MapPin className="h-3 w-3 mr-2 mt-0.5 text-slate-500 shrink-0" /> <span className="line-clamp-2">{admin.address || "Address pending"}</span></div></div>
-                    <button onClick={() => handleSelectAdmin(admin)} disabled={isLinking} className="w-full py-3 bg-white/5 hover:bg-cyan-500 hover:text-black rounded-xl text-xs font-black uppercase tracking-widest border border-white/10 hover:border-cyan-400 transition-all flex items-center justify-center space-x-2">
-                      {isLinking ? t("Linking...", "जोड़ रहे हैं...") : <><Check className="h-3.5 w-3.5" /> <span>{t("Select & Link", "चुनें और जुड़ें")}</span></>}
-                    </button>
+
+                    <div className="w-full flex items-center justify-between gap-4 border-t border-white/10 pt-4 relative z-10">
+                      <div>
+                         <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mb-0.5">{t("Interest Rate", "ब्याज दर")}</p>
+                         <p className="text-2xl font-black text-cyan-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.3)]">
+                           {admin.default_rate || 12.5}<span className="text-sm text-cyan-600">%</span>
+                         </p>
+                      </div>
+
+                      <button onClick={() => handleSelectAdmin(admin)} disabled={isLinking} className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-[10px] uppercase tracking-widest px-5 py-3 rounded-xl transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center disabled:opacity-50 disabled:cursor-not-allowed group-hover:scale-105">
+                        {isLinking ? t("Linking...", "जोड़ रहे हैं...") : <><Check className="h-4 w-4 mr-2" /> {t("Select", "चुनें")}</>}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
